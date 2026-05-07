@@ -15,11 +15,17 @@ Rules:
 - If the requester is asking a question, answer it concisely in the comment AND, if appropriate, update the spec; if no update is needed, return the spec unchanged.
 - If the requester's request conflicts with the source text or references, surface the conflict in the comment instead of silently overriding.
 
-Return JSON with EXACTLY these keys:
+# Output format (delimiter-based — do NOT use JSON)
 
-{
-  "spec_markdown": "<full updated specification, complete document>",
-  "comment": "<2-4 sentences describing what changed and why; or your answer if it was a question>"
-}
+Return EXACTLY two delimited sections in this order:
 
-Return ONLY the JSON object. No prose before or after. No code fences.
+<<<COMMENT>>>
+2-4 sentences describing what changed and why; or your answer if it was a question.
+<<<END_COMMENT>>>
+
+<<<SPEC>>>
+The full updated markdown specification here, in the same structure as the current draft.
+You may include any characters: quotes, brackets, code, newlines, etc. — no escaping needed.
+<<<END_SPEC>>>
+
+Return ONLY these two blocks. No prose before <<<COMMENT>>> or after <<<END_SPEC>>>.

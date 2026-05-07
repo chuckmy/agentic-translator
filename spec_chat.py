@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from api import get_client, get_model
@@ -20,7 +21,6 @@ def _read(path: Path) -> str:
 
 
 def _extract_json(text: str) -> dict:
-    import re
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z]*", "", text).rstrip("`").strip()
@@ -29,6 +29,24 @@ def _extract_json(text: str) -> dict:
     if start == -1 or end == -1:
         raise ValueError(f"No JSON object found in:\n{text}")
     return json.loads(text[start : end + 1])
+
+
+_DELIM_RE = re.compile(
+    r"<<<COMMENT>>>\s*(?P<comment>.*?)\s*<<<END_COMMENT>>>"
+    r".*?"
+    r"<<<SPEC>>>\s*(?P<spec>.*?)\s*<<<END_SPEC>>>",
+    re.DOTALL,
+)
+
+
+def _parse_delimited_refine(text: str) -> tuple[str, str]:
+    """Parse the delimiter-based refine_spec output. Returns (spec, comment)."""
+    m = _DELIM_RE.search(text)
+    if not m:
+        raise ValueError(
+            "Could not find <<<COMMENT>>>/<<<SPEC>>> blocks in model output:\n" + text[:500]
+        )
+    return m.group("spec").strip(), m.group("comment").strip()
 
 
 def propose_spec(
@@ -97,9 +115,21 @@ def refine_spec(
         messages=messages,
     )
     raw = "".join(b.text for b in resp.content if b.type == "text")
-    data = _extract_json(raw)
     usage = {
         "input_tokens": resp.usage.input_tokens,
         "output_tokens": resp.usage.output_tokens,
     }
-    return data["spec_markdown"], data["comment"], usage
+    # Try delimiter format first (current); fall back to JSON for older outputs
+    try:
+        new_spec, comment = _parse_delimited_refine(raw)
+    except ValueError:
+        try:
+            data = _extract_json(raw)
+            new_spec = data["spec_markdown"]
+            comment = data["comment"]
+        except Exception as e:
+            raise ValueError(
+                f"Could not parse refine_spec output (tried delimiters and JSON): {e}\n"
+                f"Raw output:\n{raw[:1000]}"
+            )
+    return new_spec, comment, usage
