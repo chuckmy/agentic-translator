@@ -1,89 +1,134 @@
 # Agentic Translator
 
-A research prototype implementing the four-stage agentic translation cycle described in Yamada (2026, forthcoming, *The Routledge Handbook of Translation and Technology*): **Identification → Prompting → Generation → Verification**, with interactive specification, document-level memory, and MQM-based quality verification.
+> A research prototype that treats translation as **communication design**, not text-to-text conversion — implementing the four-stage agentic translation cycle (Identify → Prompt → Generate → Verify) grounded in Translation Studies metalanguage.
 
-## What it does
+🌐 **Live demo:** https://agentic-translator-chuckmy.streamlit.app
+📄 **日本語版:** [README_ja.md](README_ja.md)
 
-- **Stage 1 — Identification.** The model extracts skopos / audience / register / genre / stance from the source text as JSON.
-- **Stage 2 — Prompting.** A deterministic prompt is assembled from the spec, references (glossary / paired examples / parallel texts / style guide), the situational analysis, and (for documents) running memory.
-- **Stage 3 — Generation.** A single LLM call produces the draft translation.
-- **Stage 4 — Verification.** A second LLM call returns MQM-style error spans (Freitag et al. 2021 categories: Accuracy / Fluency / Terminology / Style / Locale_convention / Other) with `critical / major / minor` severity. The verdict (`accept` / `revise`) is computed deterministically from `score = -25·critical -5·major -1·minor` against a configurable threshold (default −2). On `revise`, the error list is fed back as targeted refinement instructions for a second Stage 3 attempt (max 2 iterations).
-- **Document-level memory (DelTA-lite, after Wang et al. ICLR 2025).** For multi-paragraph inputs, the document is chunked, and a proper-noun ledger + running bilingual summary persist across chunks for terminological and tonal consistency.
-- **Interactive spec.** The model proposes an initial specification (markdown, ten sections grounded in Translation Studies); the user can edit it directly or refine it through chat; locking the spec enables the translation step.
+---
+
+## What this is
+
+Generic machine translation tools (DeepL, Google Translate, etc.) treat translation as **a conversion problem**: source text in, target text out, optimized for accuracy. But as Yamada (forthcoming) argues in his chapter *Metalanguage and GenAI: Empowering Language Learners and Translators in Training* (in *The Routledge Handbook of Translation and Technology*, 2nd ed.), accuracy is no longer where the value of translation lives:
+
+> "The easier it becomes to generate text, the harder it becomes to ensure that text fulfils a specific communicative purpose."
+
+What separates a good translation from a serviceable one — register, audience fit, voice, cultural framing — has always been a matter of **design decisions**, not lexical accuracy. Generative AI now lets us treat those decisions as **explicit, machine-readable instructions** rather than tacit artisanal knowledge.
+
+This prototype is an attempt to operationalize that idea: it asks the user to author a translation specification (with the model's help) **before** any translation is produced, then runs an agentic four-stage pipeline that uses that specification end-to-end.
+
+## The four-stage cycle
+
+```
+        ┌─────────────────────────────────────────────────────────┐
+        │  ① Identification    Skopos · Audience · Register ·     │
+        │                      Genre · Stance  →  JSON            │
+        ├─────────────────────────────────────────────────────────┤
+        │  ② Prompting         Spec + References + Identification │
+        │                      → deterministic prompt assembly    │
+        ├─────────────────────────────────────────────────────────┤
+        │  ③ Generation        LLM call → draft translation       │
+        ├─────────────────────────────────────────────────────────┤
+        │  ④ Verification      MQM error spans (Freitag 2021):    │
+        │                      Accuracy / Fluency / Terminology / │
+        │                      Style / Locale → score → verdict   │
+        │                      (revise → ② if score below thresh) │
+        └─────────────────────────────────────────────────────────┘
+```
+
+Around this core, three additional layers:
+
+- **Interactive specification.** Before any translation runs, the model proposes a markdown specification (skopos, audience, register, genre, terminology guidance, style decisions, things to preserve / localize / avoid, open questions). The user edits it directly or refines it through chat ("audience is K-pop fans aged 15–25", "use だ・である調 for formal register"). Translation is gated until the user explicitly locks the spec.
+- **Reference materials.** Glossaries, paired translation examples, parallel target-language texts, and free-form style guides can be uploaded; they are injected into the spec proposal, the translation prompt, and the verifier.
+- **Document-level memory (DelTA-lite).** For multi-paragraph inputs, the document is chunked at paragraph boundaries, and a proper-noun ledger plus a running bilingual summary persist across chunks so that terminology and voice stay consistent.
+
+## What makes this different
+
+| Conventional MT | This prototype |
+|---|---|
+| Single function: text → text | Spec-authoring + translation + verification |
+| Style and audience are implicit | Style and audience are **explicit fields** the user composes |
+| Fixed quality dimension (accuracy) | MQM-typed errors with severity-weighted score |
+| Stateless across chunks | Persistent terminology + summary across the document |
+| Black-box evaluation | Error spans cited verbatim; verdict computed deterministically |
+| User cannot direct strategy | User chats with the planner to compose the spec |
+
+## Theoretical grounding
+
+The architecture reflects the framework developed in:
+
+> Yamada, M. (forthcoming). Metalanguage and GenAI: Empowering language learners and translators in training. In *The Routledge Handbook of Translation and Technology* (2nd ed.).
+
+Specifically, the chapter's argument that **the vocabulary of Translation Studies is now the instruction code for the machine** — skopos, register, audience, equivalence, foreignization, domestication, genre — is what motivates the explicit, structured specification at the centre of this app.
+
+The prototype also draws on:
+
+- Kocmi, T. & Federmann, C. (2023). [GEMBA-MQM: Detecting Translation Quality Error Spans with GPT-4](https://arxiv.org/abs/2310.13988). *WMT 2023.* — for the MQM-typed verifier.
+- Freitag, M., Foster, G., Grangier, D., Ratnakar, V., Tan, Q., & Macherey, W. (2021). [Experts, Errors, and Context: A Large-Scale Study of Human Evaluation for Machine Translation](https://arxiv.org/abs/2104.14478). *TACL.* — for the error category set and severity weights.
+- Wang, Y. et al. (2024). [DelTA: An Online Document-Level Translation Agent Based on Multi-Level Memory](https://arxiv.org/abs/2410.08143). *ICLR 2025.* — for the persistent proper-noun ledger and running summary.
+- Kayano, S. & Sugawara, Y. (2025). [Specification-Aware Machine Translation and Evaluation for Purpose Alignment](https://arxiv.org/abs/2509.17559). *WMT 2025.* — the closest precedent for spec-driven LLM translation.
+- Wu, M. et al. (2024/2025). [(Perhaps) Beyond Human Translation: Harnessing Multi-Agent Collaboration for Translating Ultra-Long Literary Texts](https://arxiv.org/abs/2405.11804). *TACL.* — for role-decomposed agentic translation.
 
 ## Architecture
 
 ```
-app.py            — Streamlit UI (English / Japanese toggle)
-pipeline.py       — 4-stage cycle + run_document_pipeline
-spec_chat.py      — propose_spec + interactive refinement
-memory.py         — DocumentMemory + update_memory
-chunker.py        — paragraph splitting
-references.py    — 4-category reference materials
-api.py            — centralized API key handling (UI input or .env)
-i18n.py           — UI translations (en / ja)
-prompts/          — system prompts for each stage
-specs/            — example style specifications
-test_set/         — bilingual test set with glossaries, paired examples, style guides
+agentic_translator/
+├── app.py                    Streamlit UI (English / Japanese toggle)
+├── pipeline.py               4-stage cycle + run_document_pipeline
+├── spec_chat.py              propose_spec + interactive refinement
+├── memory.py                 DocumentMemory + update_memory (DelTA-lite)
+├── chunker.py                paragraph splitting
+├── references.py             4-category reference handling
+├── api.py                    centralized API key management
+├── i18n.py                   UI translations (en / ja)
+├── prompts/
+│   ├── identify.txt          Stage 1 — situational analysis
+│   ├── translate.txt         Stage 3 template
+│   ├── verify.txt            Stage 4 — MQM error span extraction
+│   ├── propose_spec.txt      initial spec generation
+│   ├── refine_spec.txt       chat-based spec refinement
+│   └── update_memory.txt     proper-noun + summary update
+├── specs/                    sample style specifications
+├── test_set/                 bilingual test set (3 genres × 2 directions)
+└── requirements.txt
 ```
 
-## Requirements
+## Quick start
 
-- Python 3.9+ (tested on 3.9.6)
-- An Anthropic API key (https://console.anthropic.com)
+### Try the live demo
 
-## Setup
+Open https://agentic-translator-chuckmy.streamlit.app, supply your own Anthropic API key in the sidebar (kept only in your browser session), and you can use it immediately. **You will need an API key from https://console.anthropic.com**.
+
+### Run locally
 
 ```bash
-git clone <this repo>
-cd agentic_translator
+git clone https://github.com/chuckmy/agentic-translator.git
+cd agentic-translator
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-You can supply your API key in either of two ways:
-
-1. **Via the UI** (recommended for any deployment): leave `.env` empty or absent; the app will prompt you for the key in the sidebar (kept only in the browser session).
-2. **Via `.env`** (developer convenience): copy `.env.example` to `.env` and fill in your key:
-   ```
-   ANTHROPIC_API_KEY=sk-ant-api03-...
-   ANTHROPIC_MODEL=claude-sonnet-4-6
-   ```
-
-## Run
-
-```bash
-source .venv/bin/activate
+# Either set your key in .env (see .env.example) OR enter it in the UI sidebar
 streamlit run app.py
 ```
 
-Open http://localhost:8501/.
+Open http://localhost:8501.
 
-## Usage
+### Workflow
 
-1. (Optional) Upload reference materials in the **① Reference materials** section: glossary (TSV/CSV), paired examples (TSV/CSV), parallel target-language texts (TXT/MD), and a style guide (MD/TXT).
-2. Paste the source text into **② Source text**. Multi-paragraph inputs activate document-level memory.
-3. Click **Propose spec** (③) to draft a specification. Edit directly or refine through chat. Click **Use this spec** to lock.
-4. Click **Translate** (④). Stage panels populate live, and the running terminology ledger appears between chunks.
+1. (Optional) Upload reference materials in **① Reference materials**.
+2. Paste source text into **② Source text**. Multi-paragraph input activates document-level memory.
+3. Click **Propose spec** (③). Review the markdown spec; edit directly or refine through chat. Click **Use this spec** to lock.
+4. Click **Translate** (④). Stage panels populate live; the proper-noun ledger and running summary appear between chunks.
 
-A pre-made bilingual test set lives at `test_set/` — see `test_set/README.md` for suggested experiments.
+## Test set
 
-## Citing the underlying ideas
+`test_set/` contains six original multi-paragraph texts (three Japanese, three English) covering sports news, literary, and academic genres, plus glossaries, paired examples, and style guides for both directions. Each text is designed to span multiple chunks so the document-level memory can be observed. See [`test_set/README.md`](test_set/README.md) for suggested experiments.
 
-The architecture draws on:
+## Status
 
-- **Yamada (2026, forthcoming)** — *The Routledge Handbook of Translation and Technology*, chapter on agentic translation and metalanguage as instruction code.
-- **Kayano & Sugawara (WMT 2025)** — *Specification-Aware Machine Translation and Evaluation for Purpose Alignment* (arXiv:2509.17559).
-- **Wang et al. (ICLR 2025)** — *DelTA: An Online Document-Level Translation Agent Based on Multi-Level Memory* (arXiv:2410.08143).
-- **Kocmi & Federmann (WMT 2023)** — *GEMBA-MQM: Detecting Translation Quality Error Spans with GPT-4* (arXiv:2310.13988).
-- **Freitag et al. (TACL 2021)** — *Experts, Errors, and Context: A Large-Scale Study of Human Evaluation for MT* (arXiv:2104.14478).
-- **Wu et al. (TACL 2025)** — *(Perhaps) Beyond Human Translation: Harnessing Multi-Agent Collaboration for Translating Ultra-Long Literary Texts* (arXiv:2405.11804).
+This is a **research prototype**, not a production system. It is shared here to support the discussion in Yamada (forthcoming) and to enable colleagues, students, and researchers to experiment with spec-driven agentic translation. Feedback and pull requests are welcome.
 
 ## License
 
 TBD.
-
-## Status
-
-Research prototype. Not production-ready. Public deployment should require user-supplied API keys (default behavior when `.env` is absent).
