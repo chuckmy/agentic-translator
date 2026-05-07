@@ -1,4 +1,4 @@
-"""Split source text into paragraph-sized chunks.
+r"""Split source text into paragraph-sized chunks.
 
 Strategy:
 - Split on blank-line paragraph breaks (\n\s*\n).
