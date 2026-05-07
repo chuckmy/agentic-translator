@@ -56,6 +56,13 @@ def t(key: str, **kwargs) -> str:
     return _t(key, st.session_state.ui_lang, **kwargs)
 
 
+_UI_LANG_TO_SPEC = {"en": "English", "ja": "Japanese"}
+
+
+def _spec_language() -> str:
+    return _UI_LANG_TO_SPEC.get(st.session_state.ui_lang, "English")
+
+
 # ---------------------------------------------------------------------------
 # header
 # ---------------------------------------------------------------------------
@@ -262,6 +269,7 @@ if propose_clicked:
                 source_language=st.session_state.source_language,
                 target_language=st.session_state.target_language,
                 references=st.session_state.references,
+                spec_language=_spec_language(),
             )
             st.session_state.spec_md = spec_md
             st.session_state.spec_chat = []
@@ -310,6 +318,7 @@ if st.session_state.spec_md:
                         current_spec=st.session_state.spec_md,
                         conversation=st.session_state.spec_chat[:-1],
                         user_message=user_msg,
+                        spec_language=_spec_language(),
                     )
                     st.session_state.spec_md = new_spec
                     st.session_state.spec_rev += 1

@@ -11,6 +11,8 @@ Your job: produce an UPDATED draft incorporating the requester's feedback, plus 
 
 Rules:
 - Keep the same markdown structure (top-level headings) as the current draft.
+- Write the spec body in the SPEC LANGUAGE specified by the user. If the current draft is already in that language, preserve it; if the user explicitly asks to switch language, translate the whole spec accordingly.
+- Write the comment in the SPEC LANGUAGE.
 - Only change what the requester asked to change, plus minimum-necessary edits for consistency.
 - If the requester is asking a question, answer it concisely in the comment AND, if appropriate, update the spec; if no update is needed, return the spec unchanged.
 - If the requester's request conflicts with the source text or references, surface the conflict in the comment instead of silently overriding.

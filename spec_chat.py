@@ -55,12 +55,14 @@ def propose_spec(
     source_language: str,
     target_language: str,
     references: References,
+    spec_language: str = "English",
 ) -> tuple[str, dict]:
     """Generate an initial spec proposal. Returns (spec_markdown, usage)."""
     system = _read(PROMPTS / "propose_spec.txt")
     user = (
         f"SOURCE LANGUAGE: {source_language}\n"
-        f"TARGET LANGUAGE: {target_language}\n\n"
+        f"TARGET LANGUAGE: {target_language}\n"
+        f"SPEC LANGUAGE: {spec_language}\n\n"
         f"REFERENCE MATERIALS:\n{references.to_context_block()}\n\n"
         f"SOURCE TEXT:\n{source_text}"
     )
@@ -88,13 +90,15 @@ def refine_spec(
     current_spec: str,
     conversation: list[dict],  # list of {"role": "user"|"assistant", "content": str}
     user_message: str,
+    spec_language: str = "English",
 ) -> tuple[str, str, dict]:
     """Refine the spec given a new user message. Returns (new_spec, comment, usage)."""
     system = _read(PROMPTS / "refine_spec.txt")
 
     context = (
         f"SOURCE LANGUAGE: {source_language}\n"
-        f"TARGET LANGUAGE: {target_language}\n\n"
+        f"TARGET LANGUAGE: {target_language}\n"
+        f"SPEC LANGUAGE: {spec_language}\n\n"
         f"REFERENCE MATERIALS:\n{references.to_context_block()}\n\n"
         f"SOURCE TEXT:\n{source_text}\n\n"
         f"CURRENT DRAFT SPEC:\n{current_spec}"
