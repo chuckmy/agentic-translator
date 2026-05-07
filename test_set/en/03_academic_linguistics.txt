@@ -1,0 +1,9 @@
+Cross-Linguistic Transfer of Discourse Markers in Late Bilingual Speakers: Evidence from Japanese-English Conversational Data
+
+This study investigates the cross-linguistic transfer of discourse markers (DMs) in late Japanese-English bilingual speakers, focusing on the L2-to-L1 direction — a configuration that has received comparatively little attention in the bilingualism literature. Prior work has tended to focus on L1-to-L2 transfer, leaving open the question of whether late bilinguals' dominant first language is similarly permeable to L2 pragmatic influence.
+
+Twenty-eight Japanese-native speakers with C1-or-higher English proficiency, all of whom acquired English after the age of fifteen, participated in a semi-structured interview task conducted entirely in Japanese. Recordings totaling approximately twelve hours were transcribed and coded for DM token frequency, position, and pragmatic function, using an extension of Schiffrin's (1987) framework adapted for Japanese discourse.
+
+Statistical analysis employed mixed-effects logistic regression, with participant and item modeled as random effects. Results indicate a small but statistically significant intrusion of English DMs — most prominently *like*, *you know*, and *I mean* — into otherwise Japanese discourse, with the magnitude of intrusion correlating positively with self-reported English-language daily exposure (ρ = 0.41, p < .05). Pragmatic functions, however, did not transfer cleanly: English *like* in the Japanese matrix language was used predominantly in the quotative function, suggesting partial rather than wholesale lexical borrowing.
+
+We discuss implications for theories of bilingual lexical activation, and propose a refined model in which DM transfer operates at the level of pragmatic-functional slots rather than whole-form replacement.

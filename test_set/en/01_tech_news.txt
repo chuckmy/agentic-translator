@@ -1,0 +1,9 @@
+BlueRiver Releases Aurora-Lite, an On-Device AI Assistant Built for Privacy
+
+Tokyo-based startup BlueRiver Inc. announced today the public release of Aurora-Lite, a privacy-focused AI assistant designed to run entirely on consumer smartphones. The three-billion-parameter model, the company claims, matches the performance of cloud-based assistants on common workflow tasks while sending no user data off-device.
+
+CEO Marina Okabe, speaking at a press event in Shibuya, framed the product as "the first practical answer to the trade-off between capability and privacy that has shaped the assistant market." Aurora-Lite supports calendar management, email summarization, and contextual search across the user's local files. Pricing is set at ¥980 per month, with a free tier limited to thirty queries per day.
+
+Industry analysts have noted that BlueRiver's approach diverges from the prevailing strategy of major cloud-AI vendors. "Most assistants ship the user's data to a remote server and apologize later," said Daniel Roth, principal at Yokohama Capital. "BlueRiver is betting that enterprises and privacy-conscious consumers will pay a premium for on-device guarantees."
+
+Aurora-Lite is available on iOS and Android starting May 5. A Mac and Windows desktop version is planned for late 2026, with multilingual support — Japanese, English, and Korean — included from launch.
