@@ -34,6 +34,7 @@ def _init_state():
     ss.setdefault("user_api_key", "")
     ss.setdefault("references", References())
     ss.setdefault("spec_md", "")
+    ss.setdefault("spec_rev", 0)  # increments when spec_md changes externally (chat)
     ss.setdefault("spec_locked", False)
     ss.setdefault("spec_chat", [])
     ss.setdefault("source_text", "")
@@ -265,6 +266,7 @@ if propose_clicked:
             st.session_state.spec_md = spec_md
             st.session_state.spec_chat = []
             st.session_state.spec_locked = False
+            st.session_state.spec_rev += 1
         except Exception as e:
             st.error(t("sec3_propose_failed", err=str(e)))
 
@@ -276,12 +278,15 @@ if unlock_clicked:
     st.session_state.spec_locked = False
 
 if st.session_state.spec_md:
+    # Use a versioned key so external updates (Propose / chat refine) force the
+    # widget to rebuild and pick up the new value. Direct edits keep the same
+    # version and are tracked via the return value.
     edited = st.text_area(
         t("sec3_spec_label"),
         value=st.session_state.spec_md,
         height=400,
         disabled=st.session_state.spec_locked,
-        key="spec_editor",
+        key=f"spec_editor_v{st.session_state.spec_rev}",
     )
     if not st.session_state.spec_locked and edited != st.session_state.spec_md:
         st.session_state.spec_md = edited
@@ -307,6 +312,7 @@ if st.session_state.spec_md:
                         user_message=user_msg,
                     )
                     st.session_state.spec_md = new_spec
+                    st.session_state.spec_rev += 1
                     st.session_state.spec_chat.append(
                         {"role": "assistant", "content": comment}
                     )
