@@ -134,4 +134,4 @@ streamlit run app.py
 
 ## ライセンス
 
-未定。
+MIT License — © 2026 株式会社翻訳ラボ Translation Lab Inc. 詳細は [LICENSE](LICENSE) を参照。

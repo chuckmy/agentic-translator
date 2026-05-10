@@ -131,4 +131,4 @@ This is a **research prototype**, not a production system. It is shared here to 
 
 ## License
 
-TBD.
+MIT License — © 2026 株式会社翻訳ラボ Translation Lab Inc. See [LICENSE](LICENSE).
