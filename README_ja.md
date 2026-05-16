@@ -1,4 +1,4 @@
-# Agentic Translator
+# Agentic AI Translate
 
 > 翻訳を「テキスト→テキストの変換」ではなく「**コミュニケーション設計（design）**」として捉え直す研究プロトタイプ。翻訳学のメタ言語を機械への指示コードとして用いる、エージェンティック翻訳の4ステージサイクル（Identify → Prompt → Generate → Verify）の実装です。
 
@@ -82,7 +82,7 @@ agentic_translator/
 ├── memory.py                 DocumentMemory + update_memory（DelTA-lite）
 ├── chunker.py                段落分割
 ├── references.py             参考資料 4 種類の取り込み
-├── api.py                    APIキーの集中管理
+├── api.py                    プロバイダー選択 + APIキー管理
 ├── i18n.py                   UI 翻訳辞書（en / ja）
 ├── prompts/
 │   ├── identify.txt          Stage 1 — 状況解析
@@ -100,7 +100,7 @@ agentic_translator/
 
 ### 公開デモを試す
 
-https://agentic-translator-chuckmy.streamlit.app を開き、サイドバーで自分の Anthropic APIキーを入力してください（**キーはあなたのブラウザセッション内にのみ保持され、サーバーには保存されません**）。APIキーは https://console.anthropic.com で取得できます。
+https://agentic-translator-chuckmy.streamlit.app を開き、サイドバーで Anthropic または OpenAI を選んで、自分の APIキーを入力してください（**キーはあなたのブラウザセッション内にのみ保持され、サーバーには保存されません**）。APIキーは選択したプロバイダーで取得してください。
 
 ### ローカルで実行
 
@@ -111,18 +111,48 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# .env にキーを設定するか（.env.example 参照）、UI から入力
+# プロバイダーを選び、.env にキーを設定するか（.env.example 参照）、
+# UI から入力
 streamlit run app.py
 ```
 
 ブラウザで http://localhost:8501 を開きます。
 
+### 推奨 API モデル
+
+**2026-05-16 時点**の推奨デフォルトは以下です。
+
+| プロバイダー | 推奨デフォルト | 高品質優先の選択肢 | 備考 |
+|---|---|---|---|
+| Anthropic Claude API | `claude-sonnet-4-6` | `claude-opus-4-7` | 品質・速度・コストのバランスがよいので、通常は Sonnet を推奨します。文学翻訳や長文で品質を最優先する場合は Opus を検討してください。 |
+| OpenAI API | `gpt-5.4-mini` | `gpt-5.4` | このアプリは1回の翻訳で複数回 API を呼ぶため、通常は mini が現実的です。コストや速度より品質を優先する場合は GPT-5.4 を検討してください。 |
+
+サイドバーで毎回入力したくない場合は、`.env` に設定できます。
+
+```env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-api03-...
+ANTHROPIC_MODEL=claude-sonnet-4-6
+
+# または
+
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.4-mini
+```
+
+モデルの提供状況は変わることがあります。モデル名が動かない場合は公式ドキュメントを確認してください: [OpenAI models](https://developers.openai.com/api/docs/models)、[Claude model IDs](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions)。
+
 ### 操作の流れ
 
 1. （任意）**① 参考資料**で用語集・対訳例・パラレルテクスト・スタイルガイドをアップロード
-2. **② 原文** に翻訳したい文章を貼付（複数段落で文書レベルメモリ有効）
-3. **③ 翻訳仕様** で **spec を提案** → markdownを直接編集 or チャットで改訂 → **この spec を確定**でロック
-4. **④ 翻訳実行** をクリック。各ステージがリアルタイムで展開、チャンク間で固有名詞台帳と要約が育っていきます
+2. サイドバーで **モデルプロバイダー**（`Anthropic` または `OpenAI`）を選び、対応する APIキーを入力します。`.env` に設定済みの場合は入力不要です
+3. **② 原文** に翻訳したい文章を貼付します（複数段落で文書レベルメモリ有効）
+4. **③ 翻訳仕様** で **spec を提案** をクリックします。原文と参考資料から markdown 形式の翻訳仕様書が生成されます
+5. 提案された spec を確認し、必要に応じて直接編集するか、下のチャットで改訂します
+6. spec が生成されると **この spec を確定** ボタンが押せるようになります。内容が固まったらクリックして spec をロックします
+7. spec をロックすると **④ 翻訳実行** のボタンが押せるようになります。クリックすると翻訳パイプラインが実行されます
+8. 各ステージがリアルタイムで展開され、最後に最終訳・実行データ・実行ログをダウンロードできます。途中で失敗した場合も、部分的な実行ログをダウンロードできます
 
 ## テストセット
 

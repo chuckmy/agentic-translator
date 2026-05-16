@@ -7,6 +7,7 @@ Run:
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import streamlit as st
 
@@ -17,7 +18,7 @@ from pipeline import run_document_pipeline
 from references import References, parse_pair_table
 from spec_chat import propose_spec, refine_spec
 
-st.set_page_config(page_title="Agentic Translator", layout="wide")
+st.set_page_config(page_title="Agentic AI Translate", layout="wide")
 
 LANGS_SUPPORTED = [
     "Japanese", "English", "Traditional Chinese", "Simplified Chinese",
@@ -31,7 +32,15 @@ LANGS_SUPPORTED = [
 def _init_state():
     ss = st.session_state
     ss.setdefault("ui_lang", "en")
-    ss.setdefault("user_api_key", "")
+    ss.setdefault("llm_provider", api.get_provider())
+    if ss.llm_provider not in api.provider_names():
+        ss.llm_provider = api.get_provider()
+    ss.setdefault("user_api_keys", {})
+    for provider_name in api.provider_names():
+        ss.user_api_keys.setdefault(provider_name, "")
+    if "user_api_key" in ss:
+        ss.user_api_keys.setdefault(ss.llm_provider, ss.user_api_key)
+        del ss["user_api_key"]
     ss.setdefault("references", References())
     ss.setdefault("spec_md", "")
     ss.setdefault("spec_rev", 0)  # increments when spec_md changes externally (chat)
@@ -44,12 +53,15 @@ def _init_state():
     ss.setdefault("chunk_max_chars", 1500)
     ss.setdefault("accept_threshold", -2)
     ss.setdefault("translation_result", None)
+    ss.setdefault("run_events", [])
 
 
 _init_state()
 
-# Apply runtime API key override on every script run
-api.set_api_key(st.session_state.user_api_key or None)
+# Apply runtime provider/key overrides on every script run
+api.set_provider(st.session_state.llm_provider)
+for _provider_name, _key in st.session_state.user_api_keys.items():
+    api.set_api_key(_key or None, provider=_provider_name)
 
 
 def t(key: str, **kwargs) -> str:
@@ -61,6 +73,86 @@ _UI_LANG_TO_SPEC = {"en": "English", "ja": "Japanese"}
 
 def _spec_language() -> str:
     return _UI_LANG_TO_SPEC.get(st.session_state.ui_lang, "English")
+
+
+def _jsonable(value):
+    try:
+        json.dumps(value, ensure_ascii=False)
+        return value
+    except TypeError:
+        return str(value)
+
+
+def _record_run_event(name: str, payload: object) -> None:
+    st.session_state.run_events.append({
+        "time": datetime.now(timezone.utc).isoformat(),
+        "event": name,
+        "payload": _jsonable(payload),
+    })
+
+
+def _run_events_json() -> str:
+    return json.dumps(st.session_state.run_events, ensure_ascii=False, indent=2)
+
+
+def _format_md_value(value, indent: int = 0) -> list[str]:
+    prefix = "  " * indent
+    if isinstance(value, dict):
+        lines = []
+        for key, item in value.items():
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}- **{key}:**")
+                lines.extend(_format_md_value(item, indent + 1))
+            else:
+                lines.append(f"{prefix}- **{key}:** {item}")
+        return lines
+    if isinstance(value, list):
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}-")
+                lines.extend(_format_md_value(item, indent + 1))
+            else:
+                lines.append(f"{prefix}- {item}")
+        return lines
+    return [f"{prefix}{value}"]
+
+
+def _run_events_markdown() -> str:
+    lines = ["# Agentic AI Translate Run Log", ""]
+    for ev in st.session_state.run_events:
+        lines.append(f"## {ev['event']}")
+        lines.append("")
+        lines.append(f"- Time: `{ev['time']}`")
+        payload = ev.get("payload")
+        if payload not in (None, "", {}, []):
+            lines.append("")
+            lines.extend(_format_md_value(payload))
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _show_run_log_downloads() -> None:
+    if not st.session_state.run_events:
+        return
+    st.caption(t("run_log_privacy"))
+    cols = st.columns(2)
+    with cols[0]:
+        st.download_button(
+            t("run_log_download_json"),
+            data=_run_events_json(),
+            file_name="agentic_translation_run_log.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+    with cols[1]:
+        st.download_button(
+            t("run_log_download_md"),
+            data=_run_events_markdown(),
+            file_name="agentic_translation_run_log.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -92,24 +184,39 @@ with st.sidebar:
 
     # API key
     st.header(t("sb_api_section"))
-    typed_key = st.text_input(
-        t("sb_api_label"),
-        value=st.session_state.user_api_key,
-        type="password",
-        placeholder=t("sb_api_placeholder"),
-        help=t("sb_api_help"),
+    provider_keys = api.provider_names()
+    provider_choice = st.selectbox(
+        t("sb_provider_label"),
+        provider_keys,
+        index=provider_keys.index(st.session_state.llm_provider),
+        format_func=api.provider_label,
     )
-    if typed_key != st.session_state.user_api_key:
-        st.session_state.user_api_key = typed_key
-        api.set_api_key(typed_key or None)
+    if provider_choice != st.session_state.llm_provider:
+        st.session_state.llm_provider = provider_choice
+        api.set_provider(provider_choice)
+        st.rerun()
 
-    if st.session_state.user_api_key.strip():
+    provider = st.session_state.llm_provider
+    st.caption(t("sb_model_caption", model=api.get_model(provider)))
+
+    typed_key = st.text_input(
+        t("sb_api_label", provider=api.provider_label(provider)),
+        value=st.session_state.user_api_keys.get(provider, ""),
+        type="password",
+        placeholder=api.provider_placeholder(provider),
+        help=t("sb_api_help", provider=api.provider_label(provider)),
+    )
+    if typed_key != st.session_state.user_api_keys.get(provider, ""):
+        st.session_state.user_api_keys[provider] = typed_key
+        api.set_api_key(typed_key or None, provider=provider)
+
+    if st.session_state.user_api_keys.get(provider, "").strip():
         st.success(t("sb_api_set_runtime"))
         if st.button(t("sb_api_clear"), use_container_width=True):
-            st.session_state.user_api_key = ""
-            api.set_api_key(None)
+            st.session_state.user_api_keys[provider] = ""
+            api.set_api_key(None, provider=provider)
             st.rerun()
-    elif api.env_has_real_key():
+    elif api.env_has_real_key(provider):
         st.info(t("sb_api_set_env"))
     else:
         st.warning(t("sb_api_unset"))
@@ -351,6 +458,7 @@ if not st.session_state.spec_locked:
     st.caption(t("sec4_lock_first"))
 
 if translate_clicked:
+    st.session_state.run_events = []
     status = st.status(t("run_status"), expanded=True)
     chunk_containers: dict[int, "st.delta_generator.DeltaGenerator"] = {}
     memory_box = st.empty()
@@ -362,6 +470,7 @@ if translate_clicked:
         return chunk_containers[idx]
 
     def on_event(name, payload):
+        _record_run_event(name, payload)
         if name == "doc_start":
             status.write(t(
                 "run_doc_start",
@@ -472,7 +581,9 @@ if translate_clicked:
         )
         st.session_state.translation_result = result
     except Exception as e:
+        _record_run_event("error", {"message": str(e)})
         status.update(label=f"Error: {e}", state="error")
+        _show_run_log_downloads()
         st.exception(e)
         st.stop()
 
@@ -490,6 +601,27 @@ if result is not None:
         height=300,
         label_visibility="collapsed",
     )
+
+    result_json = json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+    dl_cols = st.columns(2)
+    with dl_cols[0]:
+        st.download_button(
+            t("fin_download_txt"),
+            data=result.final_translation,
+            file_name="agentic_translation.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
+    with dl_cols[1]:
+        st.download_button(
+            t("fin_download_json"),
+            data=result_json,
+            file_name="agentic_translation_run.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+    _show_run_log_downloads()
 
     if result.memory.proper_nouns:
         with st.expander(t("fin_terminology", n=len(result.memory.proper_nouns)),
@@ -523,6 +655,6 @@ if result is not None:
 
     with st.expander(t("fin_raw_json")):
         st.code(
-            json.dumps(result.to_dict(), ensure_ascii=False, indent=2),
+            result_json,
             language="json",
         )

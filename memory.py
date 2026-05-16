@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from api import get_client, get_model
+from api import call_model
 
 ROOT = Path(__file__).parent
 PROMPTS = ROOT / "prompts"
@@ -86,19 +86,13 @@ def update_memory(
         f"SOURCE:\n{chunk_source}\n\n"
         f"TRANSLATION:\n{chunk_translation}"
     )
-    resp = get_client().messages.create(
-        model=get_model(),
-        max_tokens=1500,
-        temperature=0.0,
+    raw, usage = call_model(
         system=system,
-        messages=[{"role": "user", "content": user}],
+        user=user,
+        temperature=0.0,
+        max_tokens=1500,
     )
-    raw = "".join(b.text for b in resp.content if b.type == "text")
     delta = _extract_json(raw)
-    usage = {
-        "input_tokens": resp.usage.input_tokens,
-        "output_tokens": resp.usage.output_tokens,
-    }
 
     # Mutate memory
     new_terms = delta.get("new_terms", {}) or {}

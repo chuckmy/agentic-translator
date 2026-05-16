@@ -21,7 +21,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Callable
 
-from api import get_client, get_model
+from api import call_model
 from chunker import split_into_chunks
 from memory import DocumentMemory, update_memory
 from references import References
@@ -50,19 +50,12 @@ def _extract_json(text: str) -> dict:
 
 
 def _call(system: str, user: str, *, temperature: float, max_tokens: int = 2000) -> tuple[str, dict]:
-    resp = get_client().messages.create(
-        model=get_model(),
-        max_tokens=max_tokens,
-        temperature=temperature,
+    return call_model(
         system=system,
-        messages=[{"role": "user", "content": user}],
+        user=user,
+        temperature=temperature,
+        max_tokens=max_tokens,
     )
-    text = "".join(b.text for b in resp.content if b.type == "text")
-    usage = {
-        "input_tokens": resp.usage.input_tokens,
-        "output_tokens": resp.usage.output_tokens,
-    }
-    return text, usage
 
 
 # --- data structures -------------------------------------------------------

@@ -1,4 +1,4 @@
-# Agentic Translator
+# Agentic AI Translate
 
 > A research prototype that treats translation as **communication design**, not text-to-text conversion — implementing the four-stage agentic translation cycle (Identify → Prompt → Generate → Verify) grounded in Translation Studies metalanguage.
 
@@ -79,7 +79,7 @@ agentic_translator/
 ├── memory.py                 DocumentMemory + update_memory (DelTA-lite)
 ├── chunker.py                paragraph splitting
 ├── references.py             4-category reference handling
-├── api.py                    centralized API key management
+├── api.py                    provider selection + API key management
 ├── i18n.py                   UI translations (en / ja)
 ├── prompts/
 │   ├── identify.txt          Stage 1 — situational analysis
@@ -97,7 +97,7 @@ agentic_translator/
 
 ### Try the live demo
 
-Open https://agentic-translator-chuckmy.streamlit.app, supply your own Anthropic API key in the sidebar (kept only in your browser session), and you can use it immediately. **You will need an API key from https://console.anthropic.com**.
+Open https://agentic-translator-chuckmy.streamlit.app, choose Anthropic or OpenAI in the sidebar, and supply your own API key (kept only in your browser session). You will need an API key from the selected provider.
 
 ### Run locally
 
@@ -108,18 +108,48 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Either set your key in .env (see .env.example) OR enter it in the UI sidebar
+# Choose a provider and either set its key in .env (see .env.example)
+# or enter it in the UI sidebar.
 streamlit run app.py
 ```
 
 Open http://localhost:8501.
 
+### Recommended API models
+
+As of **2026-05-16**, the default recommended models are:
+
+| Provider | Recommended default | Higher-quality option | Notes |
+|---|---|---|---|
+| Anthropic Claude API | `claude-sonnet-4-6` | `claude-opus-4-7` | Sonnet is the practical default for quality, speed, and cost. Use Opus for the most difficult literary or long-form work. |
+| OpenAI API | `gpt-5.4-mini` | `gpt-5.4` | Mini is the practical default because this app makes multiple calls per run. Use GPT-5.4 when quality matters more than cost/latency. |
+
+Set these in `.env` if you do not want to enter keys in the sidebar:
+
+```env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-api03-...
+ANTHROPIC_MODEL=claude-sonnet-4-6
+
+# or
+
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.4-mini
+```
+
+Model availability changes over time. Check the official docs if a model name stops working: [OpenAI models](https://developers.openai.com/api/docs/models) and [Claude model IDs](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions).
+
 ### Workflow
 
 1. (Optional) Upload reference materials in **① Reference materials**.
-2. Paste source text into **② Source text**. Multi-paragraph input activates document-level memory.
-3. Click **Propose spec** (③). Review the markdown spec; edit directly or refine through chat. Click **Use this spec** to lock.
-4. Click **Translate** (④). Stage panels populate live; the proper-noun ledger and running summary appear between chunks.
+2. In the sidebar, choose **Model provider** (`Anthropic` or `OpenAI`) and enter the corresponding API key, unless it is already set in `.env`.
+3. Paste source text into **② Source text**. Multi-paragraph input activates document-level memory.
+4. Click **Propose spec** in **③ Translation specification**. The app generates a markdown translation specification from the source text and any references.
+5. Review the proposed spec. Edit it directly or refine it through the chat box until the translation brief is ready.
+6. Once a spec exists, **Use this spec** becomes clickable. Click it to lock the spec.
+7. After the spec is locked, **Translate** in **④ Translate** becomes clickable. Click it to run the pipeline.
+8. Stage panels populate live; the final translation, run data, and run log can be downloaded at the end. If the run fails midway, the partial run log can still be downloaded.
 
 ## Test set
 

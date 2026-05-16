@@ -6,13 +6,14 @@ LANGS = {"en": "English", "ja": "日本語"}
 STRINGS: dict[str, dict[str, str]] = {
     "en": {
         # App header
-        "app_title": "Agentic Translator",
+        "app_title": "Agentic AI Translate",
         "app_caption": "References → Spec (interactive) → Identify → Prompt → Generate → Verify",
         # Sidebar — API key
         "sb_api_section": "API key",
-        "sb_api_label": "Anthropic API key",
-        "sb_api_help": "Your key is kept only in this browser session. Get one at console.anthropic.com.",
-        "sb_api_placeholder": "sk-ant-api03-...",
+        "sb_provider_label": "Model provider",
+        "sb_model_caption": "Model: `{model}`",
+        "sb_api_label": "{provider} API key",
+        "sb_api_help": "Your {provider} key is kept only in this browser session.",
         "sb_api_set_runtime": "✓ key configured (this session)",
         "sb_api_set_env": "✓ key configured (from .env)",
         "sb_api_unset": "⚠️ no API key — translation will fail",
@@ -78,6 +79,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "run_memory_notes": "Notes: {text}",
         "run_memory_summary": "**Running summary:**",
         "run_memory_error": "⚠️ memory update failed at chunk {i}: {err}",
+        "run_log_privacy": "Run logs may include source text, translations, verification details, and reference-derived content. API keys are not included.",
+        "run_log_download_json": "Download raw run log (.json)",
+        "run_log_download_md": "Download run report (.md)",
         # Stage panels
         "stage1_title": "Chunk {i} · Stage 1 — Identification",
         "stage3_title": "Chunk {i} · iter {iter} — Stage 3 Generation",
@@ -88,6 +92,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "stage4_metric_minor": "Minor",
         # Final results
         "fin_header": "Final translation",
+        "fin_download_txt": "Download translation (.txt)",
+        "fin_download_json": "Download run data (.json)",
         "fin_terminology": "📚 Established terminology ({n} terms)",
         "fin_summary": "📖 Document summary (running, target-language)",
         "fin_run_details": "Run details (tokens, timings)",
@@ -96,13 +102,14 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "ja": {
         # App header
-        "app_title": "エージェンティック翻訳",
+        "app_title": "Agentic AI Translate",
         "app_caption": "参考資料 → spec（対話） → Identify → Prompt → Generate → Verify",
         # Sidebar — API key
         "sb_api_section": "APIキー",
-        "sb_api_label": "Anthropic APIキー",
-        "sb_api_help": "キーはこのブラウザセッションのみに保持されます。console.anthropic.com で取得してください。",
-        "sb_api_placeholder": "sk-ant-api03-...",
+        "sb_provider_label": "モデルプロバイダー",
+        "sb_model_caption": "モデル: `{model}`",
+        "sb_api_label": "{provider} APIキー",
+        "sb_api_help": "{provider} のキーはこのブラウザセッションのみに保持されます。",
         "sb_api_set_runtime": "✓ キー設定済（このセッション）",
         "sb_api_set_env": "✓ キー設定済（.env から）",
         "sb_api_unset": "⚠️ APIキー未設定 — 翻訳できません",
@@ -168,6 +175,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "run_memory_notes": "ノート: {text}",
         "run_memory_summary": "**走行要約：**",
         "run_memory_error": "⚠️ チャンク {i} のメモリ更新失敗: {err}",
+        "run_log_privacy": "実行ログには原文、訳文、検証内容、参考資料由来の内容が含まれる場合があります。APIキーは含まれません。",
+        "run_log_download_json": "実行ログ Raw をダウンロード（.json）",
+        "run_log_download_md": "実行レポートをダウンロード（.md）",
         # Stage panels
         "stage1_title": "チャンク {i}・Stage 1 — Identification（状況解析）",
         "stage3_title": "チャンク {i}・反復 {iter} — Stage 3 Generation（翻訳生成）",
@@ -178,6 +188,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "stage4_metric_minor": "Minor",
         # Final results
         "fin_header": "最終訳",
+        "fin_download_txt": "翻訳をダウンロード（.txt）",
+        "fin_download_json": "実行データをダウンロード（.json）",
         "fin_terminology": "📚 確立された用語（{n} 項目）",
         "fin_summary": "📖 文書要約（走行・目標言語）",
         "fin_run_details": "実行詳細（トークン・所要時間）",

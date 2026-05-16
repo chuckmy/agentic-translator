@@ -9,7 +9,7 @@ import json
 import re
 from pathlib import Path
 
-from api import get_client, get_model
+from api import call_model
 from references import References
 
 ROOT = Path(__file__).parent
@@ -66,19 +66,13 @@ def propose_spec(
         f"REFERENCE MATERIALS:\n{references.to_context_block()}\n\n"
         f"SOURCE TEXT:\n{source_text}"
     )
-    resp = get_client().messages.create(
-        model=get_model(),
-        max_tokens=3000,
-        temperature=0.2,
+    text, usage = call_model(
         system=system,
-        messages=[{"role": "user", "content": user}],
+        user=user,
+        temperature=0.2,
+        max_tokens=3000,
     )
-    text = "".join(b.text for b in resp.content if b.type == "text").strip()
-    usage = {
-        "input_tokens": resp.usage.input_tokens,
-        "output_tokens": resp.usage.output_tokens,
-    }
-    return text, usage
+    return text.strip(), usage
 
 
 def refine_spec(
@@ -111,18 +105,12 @@ def refine_spec(
         messages.extend(conversation)
     messages.append({"role": "user", "content": user_message})
 
-    resp = get_client().messages.create(
-        model=get_model(),
-        max_tokens=4000,
-        temperature=0.2,
+    raw, usage = call_model(
         system=system,
         messages=messages,
+        temperature=0.2,
+        max_tokens=4000,
     )
-    raw = "".join(b.text for b in resp.content if b.type == "text")
-    usage = {
-        "input_tokens": resp.usage.input_tokens,
-        "output_tokens": resp.usage.output_tokens,
-    }
     # Try delimiter format first (current); fall back to JSON for older outputs
     try:
         new_spec, comment = _parse_delimited_refine(raw)

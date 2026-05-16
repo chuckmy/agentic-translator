@@ -1,36 +1,30 @@
-"""Minimal API connectivity test.
+"""Minimal provider connectivity test.
 
 Run after putting your API key in .env:
     source .venv/bin/activate
     python test_api.py
 """
-import os
 from dotenv import load_dotenv
-from anthropic import Anthropic
 
 load_dotenv()
 
-api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+import api
 
-if not api_key or "REPLACE_ME" in api_key:
-    raise SystemExit("ERROR: set ANTHROPIC_API_KEY in .env first.")
+if not api.has_api_key():
+    provider = api.provider_label()
+    key_env = api.PROVIDERS[api.get_provider()]["key_env"]
+    raise SystemExit(f"ERROR: set {key_env} in .env first for {provider}.")
 
-client = Anthropic(api_key=api_key)
-
-resp = client.messages.create(
-    model=model,
+text, usage = api.call_model(
+    system="You are a concise multilingual assistant.",
+    user="Say 'hello from the translation API' in Japanese, English, and Traditional Chinese. One line each.",
     max_tokens=200,
-    messages=[
-        {"role": "user", "content": "Say 'hello from Claude' in Japanese, English, and Traditional Chinese. One line each."}
-    ],
+    temperature=0.0,
 )
 
-print(f"Model: {resp.model}")
-print(f"Stop reason: {resp.stop_reason}")
-print(f"Input tokens: {resp.usage.input_tokens}")
-print(f"Output tokens: {resp.usage.output_tokens}")
+print(f"Provider: {api.provider_label()}")
+print(f"Model: {api.get_model()}")
+print(f"Input tokens: {usage['input_tokens']}")
+print(f"Output tokens: {usage['output_tokens']}")
 print("---")
-for block in resp.content:
-    if block.type == "text":
-        print(block.text)
+print(text)
