@@ -7,9 +7,15 @@ Run:
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 import streamlit as st
+
+# Company-shared deployment mode (set AT_COMPANY_MODE=1 in the server's env).
+# When on, the BYOK sidebar is hidden — translators use the server's API key
+# via env vars (ANTHROPIC_API_KEY / OPENAI_API_KEY) and never see it.
+_COMPANY_MODE = os.environ.get("AT_COMPANY_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 import api
 from chunker import split_into_chunks
@@ -217,44 +223,54 @@ with st.sidebar:
 
     st.divider()
 
-    # API key
-    st.header(t("sb_api_section"))
-    provider_keys = api.provider_names()
-    provider_choice = st.selectbox(
-        t("sb_provider_label"),
-        provider_keys,
-        index=provider_keys.index(st.session_state.llm_provider),
-        format_func=api.provider_label,
-    )
-    if provider_choice != st.session_state.llm_provider:
-        st.session_state.llm_provider = provider_choice
-        api.set_provider(provider_choice)
-        st.rerun()
-
-    provider = st.session_state.llm_provider
-    st.caption(t("sb_model_caption", model=api.get_model(provider)))
-
-    typed_key = st.text_input(
-        t("sb_api_label", provider=api.provider_label(provider)),
-        value=st.session_state.user_api_keys.get(provider, ""),
-        type="password",
-        placeholder=api.provider_placeholder(provider),
-        help=t("sb_api_help", provider=api.provider_label(provider)),
-    )
-    if typed_key != st.session_state.user_api_keys.get(provider, ""):
-        st.session_state.user_api_keys[provider] = typed_key
-        api.set_api_key(typed_key or None, provider=provider)
-
-    if st.session_state.user_api_keys.get(provider, "").strip():
-        st.success(t("sb_api_set_runtime"))
-        if st.button(t("sb_api_clear"), use_container_width=True):
-            st.session_state.user_api_keys[provider] = ""
-            api.set_api_key(None, provider=provider)
-            st.rerun()
-    elif api.env_has_real_key(provider):
-        st.info(t("sb_api_set_env"))
+    # API key — hidden in company-shared deployment mode
+    if _COMPANY_MODE:
+        provider = st.session_state.llm_provider
+        if api.env_has_real_key(provider):
+            st.caption(f"🔒 Using company API key ({api.provider_label(provider)} · {api.get_model(provider)})")
+        else:
+            st.error(
+                "AT_COMPANY_MODE=1 but no API key is set in the server env. "
+                f"Set {provider.upper()}_API_KEY on the server and restart."
+            )
     else:
-        st.warning(t("sb_api_unset"))
+        st.header(t("sb_api_section"))
+        provider_keys = api.provider_names()
+        provider_choice = st.selectbox(
+            t("sb_provider_label"),
+            provider_keys,
+            index=provider_keys.index(st.session_state.llm_provider),
+            format_func=api.provider_label,
+        )
+        if provider_choice != st.session_state.llm_provider:
+            st.session_state.llm_provider = provider_choice
+            api.set_provider(provider_choice)
+            st.rerun()
+
+        provider = st.session_state.llm_provider
+        st.caption(t("sb_model_caption", model=api.get_model(provider)))
+
+        typed_key = st.text_input(
+            t("sb_api_label", provider=api.provider_label(provider)),
+            value=st.session_state.user_api_keys.get(provider, ""),
+            type="password",
+            placeholder=api.provider_placeholder(provider),
+            help=t("sb_api_help", provider=api.provider_label(provider)),
+        )
+        if typed_key != st.session_state.user_api_keys.get(provider, ""):
+            st.session_state.user_api_keys[provider] = typed_key
+            api.set_api_key(typed_key or None, provider=provider)
+
+        if st.session_state.user_api_keys.get(provider, "").strip():
+            st.success(t("sb_api_set_runtime"))
+            if st.button(t("sb_api_clear"), use_container_width=True):
+                st.session_state.user_api_keys[provider] = ""
+                api.set_api_key(None, provider=provider)
+                st.rerun()
+        elif api.env_has_real_key(provider):
+            st.info(t("sb_api_set_env"))
+        else:
+            st.warning(t("sb_api_unset"))
 
     st.divider()
 

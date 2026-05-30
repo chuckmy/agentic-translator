@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+launchd template for macOS — runs scripts/start-server.sh at boot and keeps
+it alive. Copy to ~/Library/LaunchAgents/, replace the ABSOLUTE PATHS below
+to match your machine, then:
+
+    launchctl load ~/Library/LaunchAgents/co.translab.agentic-translator.plist
+
+See docs/deploy-tailscale.md (Part 1, step 6).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>co.translab.agentic-translator</string>
+
+    <!-- REPLACE: absolute path to scripts/start-server.sh in this repo -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-lc</string>
+        <string>/Users/translab/agentic-translator/scripts/start-server.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Restart no more often than every 30 s if it keeps crashing -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- REPLACE: absolute paths to the log files -->
+    <key>StandardOutPath</key>
+    <string>/Users/translab/.config/agentic-translator/streamlit.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/translab/.config/agentic-translator/streamlit.err.log</string>
+
+    <!-- Run as the dedicated server user (replace if different) -->
+    <key>UserName</key>
+    <string>translab</string>
+
+    <!-- launchd has no shell PATH; give it one so `git` etc. resolve -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/translab</string>
+    </dict>
+</dict>
+</plist>

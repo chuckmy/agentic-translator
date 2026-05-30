@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.10.1 - 2026-05-30
+
+### Added
+
+- **Company-shared deployment mode** — set `AT_COMPANY_MODE=1` in the server env and the BYOK sidebar is hidden; translators silently use the server's `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`. Designed for Tailscale-fronted localhost deployments where one company-paid key serves the whole team.
+- **`docs/deploy-tailscale.md`** — comprehensive guide for self-hosting on an always-on Mac / Linux box exposed to remote translators via Tailscale. Covers server install, env config, launchd auto-start, Tailscale ACL recommendations, maintenance, troubleshooting, and cost breakdown.
+- **`scripts/start-server.sh`** — bash launcher that sources `~/.config/agentic-translator/server.env` and starts headless Streamlit on `0.0.0.0:8501`.
+- **`scripts/co.translab.agentic-translator.plist`** — macOS launchd template for boot-time auto-start.
+- **`scripts/tailscale-acl.example.json`** — recommended ACL that gives translators only port 8501 on the server and admins full access + SSH.
+- `.env.example` documents `AT_MODELS_DIR`, `AT_ENGINES_DIR`, `AT_COMPANY_MODE`.
+
+### Notes
+
+- This patch contains no breaking changes; v0.10.0 deployments work unchanged. Setting `AT_COMPANY_MODE=1` is purely additive.
+
 ## v0.10.0 - 2026-05-30
 
 ### Added

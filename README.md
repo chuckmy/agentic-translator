@@ -4,6 +4,8 @@
 
 🌐 **Live demo:** https://agentic-translator-chuckmy.streamlit.app
 📄 **日本語版:** [README_ja.md](README_ja.md)
+🚀 **Current version:** [v0.10.1](https://github.com/chuckmy/agentic-translator/releases/latest) — TranslationModel + Engine (lock & compile) · Company-shared deployment mode
+🏢 **Self-host for a team:** see [docs/deploy-tailscale.md](docs/deploy-tailscale.md) for a Tailscale-fronted localhost deployment (recommended for small LSP teams up to ~20 translators)
 
 ---
 

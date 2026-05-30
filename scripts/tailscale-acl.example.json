@@ -1,0 +1,47 @@
+{
+  // Paste into Tailscale admin → Access controls → Edit ACLs.
+  //
+  // After applying, mark the server machine with `tag:server` in the
+  // admin console (Machines → translab-server → Edit tags).
+  //
+  // Translators get *only* port 8501 on the server. Admins get full
+  // access and SSH. See docs/deploy-tailscale.md (Part 3).
+
+  "groups": {
+    "group:admins":      ["admin@translab.co"],
+    "group:translators": [
+      "translator-a@translab.co",
+      "translator-b@translab.co"
+    ]
+  },
+
+  "tagOwners": {
+    "tag:server": ["group:admins"]
+  },
+
+  "acls": [
+    // Admins: any port on the server.
+    {
+      "action": "accept",
+      "src":    ["group:admins"],
+      "dst":    ["tag:server:*"]
+    },
+
+    // Translators: Streamlit port only.
+    {
+      "action": "accept",
+      "src":    ["group:translators"],
+      "dst":    ["tag:server:8501"]
+    }
+  ],
+
+  "ssh": [
+    // SSH only for admins, only into accounts they specify.
+    {
+      "action": "accept",
+      "src":    ["group:admins"],
+      "dst":    ["tag:server"],
+      "users":  ["root", "translab"]
+    }
+  ]
+}
