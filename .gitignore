@@ -25,3 +25,9 @@ Thumbs.db
 # Runtime
 logs/
 *.log
+
+# Paper build artifacts (keep .tex / .html / .md sources)
+paper/*.pdf
+paper/*.zip
+paper/*.png
+paper/*.backup
