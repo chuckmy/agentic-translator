@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Agentic AI Translate: An Agentic Translator Prototype for Translation as Communication Design</title>
+<style>
+body { font-family: Helvetica, Arial, sans-serif; line-height: 1.45; max-width: 820px; margin: 48px auto; color: #111; }
+h1 { font-size: 28px; line-height: 1.15; }
+h2 { margin-top: 32px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+h3 { margin-top: 24px; }
+pre { white-space: pre-wrap; background: #f6f6f6; padding: 12px; }
+blockquote { border-left: 3px solid #aaa; padding-left: 12px; color: #333; }
+</style>
+</head>
+<body>
+<h1>Agentic AI Translate: An Agentic Translator Prototype for Translation as Communication Design</h1>
+<p><strong>Masaru Yamada</strong> (Rikkyo University; Translation Lab Inc.)</p>
+<p>&gt; <strong>Status:</strong> System-paper draft. Architectural and conceptual contribution; empirical evaluation deferred to future work.</p>
+<p>---</p>
+<h2>Abstract</h2>
+<p>We present <strong>Agentic AI Translate</strong>, an agentic translator prototype that operationalises the thesis of Yamada (forthcoming) — that the metalanguage of Translation Studies has become an instruction code for generative AI. The system replaces the dominant <em>text-in / text-out</em> paradigm of machine translation with a four-stage agentic cycle (<strong>Identify → Prompt → Generate → Verify</strong>), preceded by an <strong>interactive specification phase</strong> in which the user composes — through model-assisted dialogue — a structured translation brief grounded in skopos theory, register, audience, and genre conventions. The verification stage adopts the GEMBA-MQM error-span protocol [Kocmi &amp; Federmann, 2023] for evidence-grounded scoring, and document-level coherence is preserved through a <em>DelTA-lite</em> memory of proper nouns and a running bilingual summary, after [Wang et al., 2025]. We describe the philosophical motivation, the architectural commitments, the four reference-material categories the system consumes, and the principal design tensions the architecture makes explicit. Empirical validation is left for future work; the contribution here is conceptual and architectural — an executable embodiment of the position that <em>translation in the GenAI era is communication design, not text conversion</em>.</p>
+<p><strong>Keywords:</strong> agentic translation, translation studies metalanguage, skopos, MQM, document-level translation, large language models, translation specifications.</p>
+<p>---</p>
+<h2>1. Introduction</h2>
+<p>For four decades, machine translation research has been organised around a single optimisation target: lexical and grammatical fidelity between a source string and a target string. Statistical and neural systems progressively closed the accuracy gap to professional human output across high-resource pairs, and large language models (LLMs) have now made fluency, idiomaticity, and basic register-matching nearly free at the segment level [Kocmi et al., 2024; Karpinska &amp; Iyyer, 2023]. In Kano-model terms [Kano, 1984], <strong>accuracy has saturated as a Must-Be quality</strong>: its presence no longer differentiates translations, only its absence is noticed.</p>
+<p>The frontier of translation value has therefore moved to what Tannen (1986) called the <em>how</em> rather than the <em>what</em> — register, audience design, voice, stance, cultural framing, genre convention — the dimensions that have always mattered to professional translators but which computational research has historically left implicit. Yamada (forthcoming), in <em>Metalanguage and GenAI: Empowering Language Learners and Translators in Training</em> (forthcoming in <em>Routledge Handbook of Technology and Translation</em>, 2nd ed.), argues that this is not merely a shift in evaluation criteria but a fundamental <strong>reconfiguration of the translator&#x27;s role</strong>: from the manual drafter of target text toward the <strong>designer of conditions</strong> under which a generative system produces text — and the <strong>verifier</strong> of whether that text fulfils its communicative purpose. Crucially, Yamada observes:</p>
+<p>&gt; &quot;The easier it becomes to generate text, the harder it becomes to ensure that text fulfils a specific communicative purpose.&quot;</p>
+<p>This <em>automation paradox</em> dissolves once we recognise that the vocabulary of Translation Studies (TS) — <em>skopos, register, audience, equivalence, foreignization, domestication, genre, stance, loyalty</em> — provides exactly the descriptive precision an LLM needs as instruction. <strong>Theory becomes operational.</strong> What was previously studied to think about practice is now spoken to instruct the machine.</p>
+<p>This paper presents an executable embodiment of that argument. <strong>Agentic AI Translate</strong> is a research prototype and an agentic translator, openly released, that takes a translation request and walks the user through a structured authoring of a translation specification before any generation occurs. It then runs an agentic four-stage pipeline (<em>Identification → Prompting → Generation → Verification</em>) that uses the specification end-to-end, with document-level state to preserve terminological consistency across long inputs. The contribution is not empirical — we have not yet conducted the comparative MQM study against unstructured prompting that would validate the hypothesis — but architectural: an executable description of <em>what such a system must contain</em> if the position outlined above is to be realised in code.</p>
+<p>The remainder of the paper is organised as follows. Section 2 develops the philosophical motivation. Section 3 specifies the architecture. Section 4 details the implementation. Section 5 positions the system relative to recent work in agentic LLM translation, document-level MT, and translation evaluation. Section 6 discusses limitations and the main design tensions. Section 7 outlines the validation plan and the structured-spec extension that constitutes the project&#x27;s main research direction.</p>
+<p>---</p>
+<h2>2. Philosophical Motivation: Translation as Communication Design</h2>
+<h3>2.1 The two layers, restated for the GenAI era</h3>
+<p>Translation has always operated on two layers: the propositional content (the <em>what</em>) and the realisation that content takes in the target language (the <em>how</em>) — including register, sentence rhythm, sociolectal markers, footnoting practice, the management of culturally bound items, and the addressivity that positions the implied reader. House&#x27;s (2015) overt/covert distinction, Reiss&#x27;s (1971/2000) text-typology, Nord&#x27;s (1997) functionalist framing, and Vermeer&#x27;s (1978) skopos all foreground the priority of communicative purpose over surface equivalence; this is not a new observation but a consensus in TS [see Munday, 2016, for the canonical synthesis].</p>
+<p>The <em>new</em> observation is that, until recently, encoding such constraints into a translation system meant either training a domain-specific model or post-editing the output of a generic one. Both approaches treated communicative design as something <em>applied to</em> translation rather than something <em>constitutive of</em> it. Generative LLMs change this: they accept long, structured natural-language instructions at inference time and condition their generation on those instructions to a degree that is qualitatively different from prior systems [Vilar et al., 2023; Karpinska &amp; Iyyer, 2023]. <strong>Communicative design becomes a first-class input.</strong></p>
+<h3>2.2 Voice as the unit of translation</h3>
+<p>Consider Murakami Haruki&#x27;s translation of Salinger&#x27;s <em>The Catcher in the Rye</em> into Japanese. The opening — &quot;If you really want to hear about it...&quot; — has been rendered by multiple Japanese translators with varying degrees of literal fidelity, but Murakami&#x27;s choice deliberately preserves not the surface lexicon of Salinger but the <em>voice</em> of Holden Caulfield: a particular cadence, a particular relation to the reader. A few-shot prompt to a current LLM, given a short Murakami sample, can reproduce that voice for adjacent passages with striking fidelity — not because the LLM has read Salinger or Murakami, but because the voice has been <strong>specified</strong> as a constraint that the model can honour.</p>
+<p>This is the operational core of the <em>translation-as-design</em> claim: voice — the most apparently artisanal aspect of literary translation — turns out to be <strong>specifiable</strong>, and once specified, it is reproducible at scale. The translator&#x27;s contribution is no longer manual drafting of every sentence, but the <strong>design of voice as a constraint</strong>.</p>
+<h3>2.3 The translator&#x27;s reconfiguration</h3>
+<p>Yamada (forthcoming) frames the translator&#x27;s emerging role as <strong>designer + verifier</strong>:</p>
+<p>- <strong>Designer</strong>: composes, with metalinguistic precision, the situational analysis (skopos, audience, register, genre) and the operational artefacts (glossaries, paired examples, parallel-text exemplars) that condition the generative system.
+- <strong>Verifier</strong>: judges output not as a post-edit task — surface error correction — but as a <em>functional</em> and <em>epistemic</em> judgement: does the output land for the audience? does it preserve factual structure? does it match the spec?</p>
+<p>The critical pedagogical implication is that the <strong>vocabulary</strong> of TS — what Gambier (2009) called the <em>meta-language</em> of the discipline — is no longer studied to <em>think about</em> practice but to <em>instruct</em> the machine. The discipline&#x27;s theoretical apparatus becomes operational infrastructure. The system described here is built on that recognition.</p>
+<p>---</p>
+<h2>3. Architecture</h2>
+<p>The system comprises three concentric layers: the <strong>four-stage cycle</strong> (the pipeline), the <strong>interactive specification</strong> that conditions every stage, and the <strong>persistent state</strong> that preserves document-level coherence.</p>
+<h3>3.1 The four-stage cycle</h3>
+<p>```
+        ┌─────────────────────────────────────────────────────────┐
+        │  ① Identification                                       │
+        │     LLM extracts {skopos, audience, register,           │
+        │     genre, stance, notes} as JSON from the source.      │
+        ├─────────────────────────────────────────────────────────┤
+        │  ② Prompting                                            │
+        │     Deterministic Python composes a translation prompt  │
+        │     from spec + references + identification + memory.   │
+        ├─────────────────────────────────────────────────────────┤
+        │  ③ Generation                                           │
+        │     Single LLM call produces the draft (T = 0.3).       │
+        ├─────────────────────────────────────────────────────────┤
+        │  ④ Verification                                         │
+        │     LLM-as-judge returns MQM error spans                │
+        │     {span, category, severity, explanation}.            │
+        │     Score = -25·crit -5·major -1·minor.                 │
+        │     Verdict computed deterministically vs. threshold.   │
+        │     If revise: errors fed back as Stage 2 refinement;   │
+        │     up to two iterations.                               │
+        └─────────────────────────────────────────────────────────┘
+```</p>
+<p><strong>Why four stages, not one?</strong> A single end-to-end prompt forces the model to perform situational analysis, prompt assembly, generation, and self-evaluation in a single forward pass — producing fluent but largely unanalysable output. Decomposition exposes each commitment as an inspectable artefact. The Identification JSON, the assembled Stage 2 prompt, and the Verification error spans are all logged and visualised in the user interface; this is by design, since the pedagogical and research value of the system depends on each stage being legible.</p>
+<p><strong>Why Stage 1 is a separate LLM call.</strong> Situational analysis can in principle be folded into a single generation prompt. We separate it for two reasons. First, the JSON it produces — `{skopos, audience, register, genre, stance, notes}` — is the <em>most direct embodiment</em> of the metalanguage thesis: TS categories appear as structured fields, not as prose. Second, separating it allows the user to <em>see</em> the situational analysis the model has performed and challenge it before generation. In current practice this remains a read-only artefact; making it user-editable is a planned extension.</p>
+<h3>3.2 Interactive specification</h3>
+<p>The most distinctive element of the system is the layer that precedes the pipeline. After source text entry, the user clicks <strong>Propose spec</strong>; the model returns a structured markdown document with ten canonical sections — <em>Skopos, Audience, Register &amp; Voice, Genre, Terminology guidance, Style decisions, Things to preserve, Things to localise, Things to avoid, Open questions</em> — drafted from the source and any uploaded references. The user may:</p>
+<p>1. Edit the markdown directly in the UI;
+2. Refine via chat (&quot;audience is academic peer reviewers&quot;, &quot;use だ・である調 throughout&quot;, &quot;preserve emoji and source-language fan vocabulary&quot;);
+3. Iterate until satisfied, then <strong>lock</strong> the spec, after which translation may run.</p>
+<p>The lock step is intentional. It enforces an <strong>architectural commitment</strong> that no translation can be produced without an explicit, user-endorsed specification. The system therefore cannot be used as a generic MT tool; it can only be used as a <em>spec-driven translation tool</em>. This is the philosophical position made operational.</p>
+<p>The specification is consumed identically by Stage 2 (Prompting) and Stage 4 (Verification): the verifier judges the translation against the same spec the generator was conditioned on. This closes a common evaluation loophole in which the verifier and the generator implicitly disagree about what counts as good output.</p>
+<h3>3.3 Reference-material layer</h3>
+<p>Four orthogonal categories of reference materials may be uploaded:</p>
+<p>| Category | Format | Functional role |
+|---|---|---|
+| Glossary | TSV/CSV (source ↔ target) | Mandatory terminology |
+| Paired examples | TSV/CSV (source ↔ target) | Translation-judgement few-shot |
+| Parallel target-language texts | TXT/MD | Genre-voice exemplars |
+| Style guide | MD/TXT | Free-form narrative constraint |</p>
+<p>These categories follow the pragmatic taxonomy used in professional CAT/TMS workflows and partially align with the ASTM F2575 standard for translation specifications. The system injects all four into the spec proposal, the generation prompt, and the verifier — each consumer can decide how to weigh them. The current implementation injects all paired examples; selective retrieval (R-BM25 or embedding similarity, after Agrawal et al., 2023) is a planned upgrade.</p>
+<h3>3.4 Document-level memory (DelTA-lite)</h3>
+<p>For multi-paragraph inputs, the chunker splits the document at blank-line paragraph boundaries (with sentence-boundary fallback for over-long paragraphs). Each chunk is translated independently, but between chunks a <strong>persistent memory</strong> is updated by an auxiliary LLM call, after Wang et al. (2025):</p>
+<p>- <strong>Proper-noun ledger</strong>: a running source-to-target dictionary of terms whose translations should remain stable (people, places, organisations, products, technical terms).
+- <strong>Bilingual running summary</strong>: 50–150 words in the target language, capturing the document&#x27;s progression for tonal continuity.
+- <strong>Immediate-window context</strong>: the previous chunk&#x27;s source and target text.</p>
+<p>These three artefacts are injected into the next chunk&#x27;s Stage 2 prompt under explicit headings (<em>Established terminology</em>, <em>Document summary so far</em>, <em>Immediately preceding chunk</em>) and the model is instructed to honour them. In informal observation on multi-paragraph literary and journalistic test inputs, the ledger correctly captures named entities that recur across chunks (e.g., <em>夏目漱石 → Natsume Soseki</em>, <em>苦沙弥先生 → Kushami</em>) without further intervention, mirroring the consistency improvements reported by Wang et al. (2025) at scale.</p>
+<h3>3.5 MQM-grounded verification</h3>
+<p>Stage 4 follows the <strong>GEMBA-MQM</strong> protocol of Kocmi &amp; Federmann (2023): the verifier prompt is language-agnostic, instructs the model to identify error spans and assign each one an MQM category and severity, and returns a structured JSON list. The category set is the canonical inventory of Freitag et al. (2021): <em>Accuracy</em> (mistranslation, addition, omission, untranslated, do-not-translate), <em>Fluency</em> (grammar, punctuation, spelling, register, inconsistency, character encoding), <em>Terminology, Style, Locale convention, Other</em>. Severity is one of <em>critical, major, minor</em>. From the error list a deterministic score is computed:</p>
+<p>$$
+\text{score} = -25 \cdot n_{\text{critical}} - 5 \cdot n_{\text{major}} - 1 \cdot n_{\text{minor}}
+$$</p>
+<p>The verdict is <em>accept</em> if the score meets a configurable threshold (default −2, i.e. up to two minor issues are tolerated; any major or critical triggers revision), otherwise <em>revise</em>. On revision, the typed error list is appended verbatim to the Stage 2 prompt as actionable instructions, and Stage 3 re-runs. The loop is bounded at two iterations — both Huang et al. (2024) and Stechly et al. (2024) show that intrinsic LLM self-correction yields rapidly diminishing returns and can degrade output.</p>
+<p>We follow Fernandes et al. (2023) and Wang et al. (2024) in requiring the verifier to <strong>emit evidence (error spans) before the score</strong>, which empirically reduces verbosity and self-preference biases in LLM-as-judge configurations.</p>
+<p>---</p>
+<h2>4. Implementation</h2>
+<p>The system is implemented in approximately 1200 lines of Python (excluding prompts and tests). The runtime stack is:</p>
+<p>- <strong>Anthropic SDK</strong> with Claude Sonnet 4.6 as the default model (configurable);
+- <strong>Streamlit</strong> for the UI;
+- <strong>python-dotenv</strong> for local development; in deployment the API key is supplied per-session by the user via the sidebar (no shared key);
+- No vector database, no GPU, no fine-tuning.</p>
+<p>The minimal stack is intentional: every commitment in the system is in <em>prompts</em> and <em>Python flow control</em>, not in trained weights. This makes the system fully inspectable and reproducible, and keeps the cost of experimenting with alternative spec structures or verifier prompts at the level of editing a text file.</p>
+<p>The repository is publicly available on GitHub under MIT licence (© Translation Lab Inc.) at https://github.com/chuckmy/agentic-translator, and a live demo is deployed on Streamlit Community Cloud at https://agentic-translator-chuckmy.streamlit.app, with bring-your-own API key. A bilingual test set covering three genres (motorsport news, literary description, academic abstract) in both translation directions is included to support reproducible exploration.</p>
+<p>---</p>
+<h2>5. Related Work</h2>
+<p><strong>Spec-aware MT.</strong> The closest precursor is Kayano &amp; Sugawara (2025), who demonstrate that prompting with an explicit translation specification — purpose, audience, register — significantly improves preference scores on intent-rich texts, sometimes exceeding human reference translations. Their specification is presented as flat free-form text; we extend the idea by making the specification an interactively <em>authored</em> artefact with a stable structural template, and by carrying it through both generation and verification rather than only generation.</p>
+<p><strong>Multi-agent translation.</strong> Wu et al. (2024/2025) introduce <strong>TransAgents</strong>, a six-agent simulation (CEO, editor, translator, localizer, proofreader, QA) for ultra-long literary texts; the system is preferred by both expert and crowd judges over GPT-4 single-call output and over reference human translations on book-length input, despite <em>lower</em> d-BLEU. This is the strongest available evidence that pipeline decomposition is qualitatively beneficial for the <em>attractive-quality</em> dimensions identified in §2. Briakou et al. (2024)&#x27;s <strong>Translating Step-by-Step</strong> demonstrates the same principle within a single model — pre-translation research → drafting → refining → proofreading — establishing WMT24 SOTA. Our prototype is closer in shape to the latter than to TransAgents; planned extensions (R5, §7) move toward role decomposition.</p>
+<p><strong>Document-level translation.</strong> Karpinska &amp; Iyyer (2023) document the strong human-evaluation preference for paragraph-level over sentence-level LLM translation, especially in literary registers. <strong>DelTA</strong> (Wang et al., 2025) introduces explicit four-tier memory — proper nouns, bilingual summary, long-term, short-term — with measurable consistency gains. Our DelTA-lite implements the first two tiers.</p>
+<p><strong>LLM-as-judge for translation.</strong> Kocmi &amp; Federmann (2023) establish that GPT-4 with a fixed three-shot MQM prompt produces scores correlating with expert MQM well enough to win the WMT23 metrics task. xCOMET (Guerreiro et al., 2024) and MetricX-25 demonstrate that <em>learned</em> metrics still outperform LLM-judge prompts at the segment level on WMT24/25; we accept this and treat the LLM-judge as the system&#x27;s first line of evaluation while documenting (§6) the planned augmentation by xCOMET as an external signal.</p>
+<p><strong>Self-correction in MT.</strong> Madaan et al. (2023) introduce Self-Refine; Feng et al. (2024)&#x27;s <strong>TEaR</strong> shows MQM-typed feedback improves refinement quality. Huang et al. (2024) and Stechly et al. (2024) document the limits of intrinsic self-correction — apparent improvements are often artefacts of sampling diversity rather than genuine self-critique. We bound our revise loop accordingly.</p>
+<p><strong>Translation Studies frameworks operationalised.</strong> Singh et al. (2024) and the <em>Honorific Effect</em> paper (2024) explore cultural and register-specific adaptation with LLMs. The systematic encoding of TS frameworks (Reiss, Nord, House) as machine-readable schema remains an open area, identified in §7 as our primary research direction.</p>
+<p>---</p>
+<h2>6. Discussion and Limitations</h2>
+<h3>6.1 What the prototype claims, and what it does not</h3>
+<p>This is an <strong>architectural</strong> contribution. We claim that the architecture coherently embodies the <em>translation-as-design</em> position; we do not yet claim that it produces measurably better translations than alternatives. A controlled comparison — same source, same target, same model, with vs. without spec — across multiple genres and language pairs, evaluated by professional translators using full MQM, is the necessary next step.</p>
+<h3>6.2 Single-model verification is the weakest link</h3>
+<p>The verifier currently runs on the same model family as the generator. This exposes the system to <strong>self-preference bias</strong> [Zheng et al., 2023; Wang et al., 2024] and to the broader limits of intrinsic self-correction [Huang et al., 2024; Stechly et al., 2024]. The bounded loop (two iterations) and the evidence-first prompt structure (errors before scores) mitigate but do not resolve this. The planned augmentation (R2, §7) introduces a cross-model judge and an external learned QE signal (xCOMET-XL or MetricX-25).</p>
+<h3>6.3 The spec is currently free-form markdown</h3>
+<p>The interactive specification is a markdown document with ten canonical headings but otherwise unconstrained content. This permits expressive richness but limits machine readability and forecloses systematic A/B experimentation on individual fields (e.g., does specifying <em>loyalty target</em> produce measurable behavioural change?). The planned extension (R6, §7) replaces the markdown with a structured JSON schema operationalising Reiss&#x27;s text typology, Nord&#x27;s loyalty, House&#x27;s overt/covert mode, and a domestication–foreignization continuum, with the markdown view derived from the schema. This is the project&#x27;s primary research direction.</p>
+<h3>6.4 Reference materials are injected without selection</h3>
+<p>All paired examples are currently injected into every prompt. Agrawal et al. (2023) show that even one mismatched in-context example can degrade translation quality more than no examples at all; Vilar et al. (2023) show that example <em>quality</em> dominates over similarity at large model scale. Both effects motivate retrieval-based selection (R-BM25 plus embedding similarity over a quality-tagged TU store), which is currently absent.</p>
+<h3>6.5 No empirical evaluation</h3>
+<p>The most important limitation. The validation plan is sketched in §7.1.</p>
+<p>---</p>
+<h2>7. Future Work</h2>
+<h3>7.1 Empirical validation</h3>
+<p>A factorial study comparing (a) generic-prompt translation, (b) free-form spec, (c) structured-schema spec, across (i) literary, (ii) journalistic, (iii) academic genres, in (α) JA→EN and (β) EN→JA, evaluated by professional translators using Freitag-2021 MQM with ESA severity protocol, would establish whether and where the spec-driven architecture yields measurable gains. Inter-rater agreement and per-axis breakdown (accuracy vs. style vs. terminology) would identify which dimensions of <em>attractive quality</em> are most spec-sensitive.</p>
+<h3>7.2 Structured specification schema (R6)</h3>
+<p>Replace the markdown spec with a JSON schema:</p>
+<p>```json
+{
+  &quot;skopos&quot;: &quot;...&quot;,
+  &quot;text_type&quot;: &quot;informative | expressive | operative | audiomedial&quot;,
+  &quot;house_mode&quot;: &quot;overt | covert&quot;,
+  &quot;loyalty&quot;: { &quot;author_intention&quot;: 0.7,
+               &quot;ST_culture_fidelity&quot;: 0.5,
+               &quot;TT_reader_orientation&quot;: 0.9,
+               &quot;commissioner_brief&quot;: 0.6 },
+  &quot;domestication_axis&quot;: 0.7,
+  &quot;audience&quot;: { ... },
+  &quot;register&quot;: { ... },
+  &quot;preserve&quot;: [...], &quot;localize&quot;: [...], &quot;avoid&quot;: [...]
+}
+```</p>
+<p>Reiss&#x27;s text typology, Nord&#x27;s loyalty principle, House&#x27;s overt/covert distinction, and the Schleiermacher–Venuti domestication–foreignization axis become <strong>fields the user fills in</strong>. The same schema underwrites the generation prompt, the verification prompt, and (critically) the experimental design — fields can be ablated, swapped, or held constant across runs to support A/B research that is structurally impossible with free-form spec.</p>
+<h3>7.3 Multi-agent decomposition</h3>
+<p>Following TransAgents and Briakou et al., split Stage 3 into <strong>research → draft → localise → proofread</strong>, with each pass governed by the same locked specification. Particular value is expected in the <em>localise</em> pass (cultural rendering, idiom handling), which TransAgents identified as the largest contributor to expert preference.</p>
+<h3>7.4 External quality signals</h3>
+<p>Add <strong>xCOMET-XL</strong> or <strong>MetricX-25</strong> as a parallel verifier whose score gates acceptance alongside the LLM judge. Cross-model judging (Sonnet generator + Gemini or GPT-5 judge) addresses self-preference bias.</p>
+<h3>7.5 Hallucination check</h3>
+<p>Augment Stage 4 with an entity-preservation check (named entities and numerals in source must appear or have explicit equivalents in target), per Guerreiro et al. (2023). Yamada&#x27;s <em>factual</em> axis is currently the weakest detector for fluent-but-fabricated output.</p>
+<p>---</p>
+<h2>8. Conclusion</h2>
+<p>We have described a research prototype that embodies, in executable form, the position that translation in the GenAI era is <em>communication design</em>. The core architectural commitments — interactive specification, the four-stage cycle, document-level memory, MQM-grounded evidence-first verification — are not arbitrary engineering choices but direct operationalisations of the metalanguage thesis advanced by Yamada (forthcoming). The system is openly released so that colleagues, students, and researchers can interrogate, extend, and contest the position it makes operational.</p>
+<p>What remains is the empirical work that this paper has explicitly not undertaken: the controlled study that would tell us whether <em>making the specification explicit</em> produces, in measurable MQM terms, the qualitative shift in <em>attractive quality</em> that the lecture-platform argument predicts. That study, and the structured-schema extension that it requires, constitutes the project&#x27;s next phase.</p>
+<p>---</p>
+<h2>References</h2>
+<p>Agrawal, S., Zhou, C., Lewis, M., Zettlemoyer, L., &amp; Ghazvininejad, M. (2023). In-context examples selection for machine translation. In <em>Findings of ACL 2023</em> (pp. 8857–8873).</p>
+<p>Briakou, E., Luo, J., Cherry, C., &amp; Freitag, M. (2024). Translating step-by-step: Decomposing the translation process for improved translation quality of long-form texts. In <em>Proceedings of WMT 2024</em>. arXiv:2409.06790.</p>
+<p>Buffon, G.-L. L. (1753). <em>Discours sur le style.</em> Paris: Académie française.</p>
+<p>Feng, Z., Zhang, Y., Li, H., Liu, W., Lang, J., Feng, Y., Wu, J., &amp; Liu, Z. (2025). TEaR: Improving LLM-based machine translation with systematic self-refinement. In <em>Proceedings of NAACL 2025</em>. arXiv:2402.16379.</p>
+<p>Fernandes, P., Yin, K., Liu, E., Martins, A. F. T., &amp; Neubig, G. (2023). The devil is in the errors: Leveraging large language models for fine-grained machine translation evaluation. arXiv:2308.07286.</p>
+<p>Freitag, M., Foster, G., Grangier, D., Ratnakar, V., Tan, Q., &amp; Macherey, W. (2021). Experts, errors, and context: A large-scale study of human evaluation for machine translation. <em>Transactions of the Association for Computational Linguistics, 9</em>, 1460–1474.</p>
+<p>Freitag, M., et al. (2024). Are LLMs breaking MT metrics? Results of the WMT24 metrics shared task. In <em>Proceedings of WMT 2024</em>.</p>
+<p>Gambier, Y. (2009). <em>Stratégies et tactiques en traduction et interprétation.</em> In Gambier, Y., &amp; Doorslaer, L. van (Eds.), <em>Handbook of Translation Studies</em> (Vol. 1). Amsterdam: John Benjamins.</p>
+<p>Guerreiro, N. M., Voita, E., &amp; Martins, A. F. T. (2023). Looking for a needle in a haystack: A comprehensive study of hallucinations in neural machine translation. In <em>Proceedings of EACL 2023</em> (pp. 1059–1075).</p>
+<p>Guerreiro, N. M., Rei, R., van Stigt, D., Coheur, L., Colombo, P., &amp; Martins, A. F. T. (2024). xCOMET: Transparent machine translation evaluation through fine-grained error detection. <em>Transactions of the Association for Computational Linguistics, 12</em>, 979–995.</p>
+<p>House, J. (2015). <em>Translation Quality Assessment: Past and Present.</em> London: Routledge.</p>
+<p>Huang, J., Chen, X., Mishra, S., Zheng, H. S., Yu, A. W., Song, X., &amp; Zhou, D. (2024). Large language models cannot self-correct reasoning yet. In <em>Proceedings of ICLR 2024.</em> arXiv:2310.01798.</p>
+<p>Kano, N., Seraku, N., Takahashi, F., &amp; Tsuji, S. (1984). Attractive quality and must-be quality. <em>Journal of the Japanese Society for Quality Control, 14</em>(2), 39–48.</p>
+<p>Karpinska, M., &amp; Iyyer, M. (2023). Large language models effectively leverage document-level context for literary translation, but critical errors persist. In <em>Proceedings of WMT 2023</em> (pp. 419–451).</p>
+<p>Kayano, S., &amp; Sugawara, Y. (2025). Specification-aware machine translation and evaluation for purpose alignment. In <em>Proceedings of WMT 2025</em>. arXiv:2509.17559.</p>
+<p>Kocmi, T., &amp; Federmann, C. (2023). Large language models are state-of-the-art evaluators of translation quality. In <em>Proceedings of EAMT 2023.</em> arXiv:2302.14520.</p>
+<p>Kocmi, T., &amp; Federmann, C. (2023). GEMBA-MQM: Detecting translation quality error spans with GPT-4. In <em>Proceedings of WMT 2023.</em> arXiv:2310.13988.</p>
+<p>Kocmi, T., et al. (2024). Findings of the 2024 Conference on Machine Translation (WMT24). In <em>Proceedings of WMT 2024</em>.</p>
+<p>Madaan, A., et al. (2023). Self-Refine: Iterative refinement with self-feedback. In <em>Advances in Neural Information Processing Systems 36</em> (NeurIPS 2023). arXiv:2303.17651.</p>
+<p>Munday, J. (2016). <em>Introducing Translation Studies: Theories and Applications</em> (4th ed.). London: Routledge.</p>
+<p>Nord, C. (1997). <em>Translating as a Purposeful Activity: Functionalist Approaches Explained.</em> Manchester: St. Jerome.</p>
+<p>O&#x27;Brien, S. (2024). Human-centred augmented translation: Against antagonism between human and machine. <em>Translation Spaces, 13</em>(1).</p>
+<p>Reiss, K. (1971/2000). <em>Translation Criticism: The Potentials and Limitations</em> (E. Rhodes, Trans.). Manchester: St. Jerome.</p>
+<p>Singh, P., Jangra, A., et al. (2024). Translating across cultures: LLMs for intralingual cultural adaptation. In <em>Proceedings of CoNLL 2024</em>.</p>
+<p>Stechly, K., Valmeekam, K., &amp; Kambhampati, S. (2024). On the self-verification limitations of large language models on reasoning and planning tasks. In <em>Proceedings of ICML 2024.</em> arXiv:2402.08115.</p>
+<p>Tannen, D. (1986). <em>That&#x27;s Not What I Meant! How Conversational Style Makes or Breaks Relationships.</em> New York: William Morrow.</p>
+<p>Vermeer, H. J. (1978). Ein Rahmen für eine allgemeine Translationstheorie. <em>Lebende Sprachen, 23</em>, 99–102.</p>
+<p>Vilar, D., Freitag, M., Cherry, C., Luo, J., Ratnakar, V., &amp; Foster, G. (2023). Prompting PaLM for translation: Assessing strategies and performance. In <em>Proceedings of ACL 2023</em> (pp. 15406–15427).</p>
+<p>Wang, P., Li, L., Chen, L., Cai, Z., Zhu, D., Lin, B., Cao, Y., Liu, Q., Liu, T., &amp; Sui, Z. (2024). Large language models are not fair evaluators. In <em>Proceedings of ACL 2024.</em> arXiv:2305.17926.</p>
+<p>Wang, Y., Zeng, J., Liu, X., Wong, D. F., Meng, F., Zhou, J., &amp; Zhang, M. (2025). DelTA: An online document-level translation agent based on multi-level memory. In <em>Proceedings of ICLR 2025.</em> arXiv:2410.08143.</p>
+<p>Wu, M., Yuan, Y., Haffari, G., &amp; Wang, L. (2024). (Perhaps) Beyond human translation: Harnessing multi-agent collaboration for translating ultra-long literary texts. <em>Transactions of the Association for Computational Linguistics</em> (2025). arXiv:2405.11804.</p>
+<p>Yamada, M. (forthcoming). Metalanguage and GenAI: Empowering language learners and translators in training. In M. A. Jiménez-Crespo &amp; V. Enríquez-Raido (Eds.), <em>Routledge Handbook of Technology and Translation</em> (2nd ed.). London: Routledge.</p>
+<p>Zheng, L., Chiang, W.-L., Sheng, Y., Zhuang, S., Wu, Z., Zhuang, Y., Lin, Z., Li, Z., Li, D., Xing, E. P., Zhang, H., Gonzalez, J. E., &amp; Stoica, I. (2023). Judging LLM-as-a-judge with MT-Bench and Chatbot Arena. In <em>Advances in Neural Information Processing Systems 36</em> (NeurIPS 2023). arXiv:2306.05685.</p>
+<p>---</p>
+<p><em>Draft prepared: 2026-05-10. Repository: https://github.com/chuckmy/agentic-translator. Live demo: https://agentic-translator-chuckmy.streamlit.app. Licence: MIT, © Translation Lab Inc.</em>
+</p>
+</body>
+</html>
