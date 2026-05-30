@@ -14,9 +14,13 @@ import streamlit as st
 import api
 from chunker import split_into_chunks
 from i18n import LANGS, t as _t
-from pipeline import run_document_pipeline
+from pipeline import SCORING_CRITERIA, run_document_pipeline
 from references import References, parse_pair_table
 from spec_chat import propose_spec, refine_spec
+from tracelog import (
+    bilingual_to_csv, bilingual_to_excel, build_bilingual_rows,
+    build_trace_data, to_excel, to_markdown,
+)
 
 st.set_page_config(page_title="Agentic AI Translate", layout="wide")
 
@@ -49,11 +53,17 @@ def _init_state():
     ss.setdefault("source_text", "")
     ss.setdefault("source_language", "Japanese")
     ss.setdefault("target_language", "English")
-    ss.setdefault("max_iterations", 2)
+    ss.setdefault("max_iterations", 3)
+    ss.setdefault("dual_verifier", False)
     ss.setdefault("chunk_max_chars", 1500)
-    ss.setdefault("accept_threshold", -2)
+    ss.setdefault("chunk_max_segments", 6)
+    # MQM 0–100 scale. Migrate any legacy negative threshold from earlier versions.
+    if not isinstance(ss.get("accept_threshold"), (int, float)) or ss.get("accept_threshold", 95) <= 0:
+        ss["accept_threshold"] = 95.0
+    ss.setdefault("accept_threshold", 95.0)
     ss.setdefault("translation_result", None)
     ss.setdefault("run_events", [])
+    ss.setdefault("align_cache", {})
 
 
 _init_state()
@@ -237,14 +247,25 @@ with st.sidebar:
     # Pipeline
     st.header(t("sb_pipeline"))
     st.session_state.max_iterations = st.slider(
-        t("sb_max_iter"), 1, 4, st.session_state.max_iterations,
+        t("sb_max_iter"), 1, 5, st.session_state.max_iterations,
+    )
+    st.session_state.dual_verifier = st.checkbox(
+        "Dual verifier (experimental)",
+        value=st.session_state.dual_verifier,
+        help="Run a second Spec-grounded verifier and merge findings. Doubles verification cost.",
     )
     st.session_state.chunk_max_chars = st.slider(
         t("sb_chunk_max"), 500, 3000, st.session_state.chunk_max_chars, step=100,
     )
     st.session_state.accept_threshold = st.slider(
-        t("sb_threshold"), -25, 0, st.session_state.accept_threshold,
-        help=t("sb_threshold_help"),
+        "MQM accept threshold (0–100)",
+        min_value=80.0, max_value=100.0,
+        value=float(st.session_state.accept_threshold),
+        step=0.5,
+        help=(
+            "MQM score ≥ threshold ⇒ accept; otherwise revise. "
+            "Burchardt et al. benchmark: 95+ = publication, 90–94 = business, <85 = needs major revision."
+        ),
     )
 
     st.divider()
@@ -333,13 +354,17 @@ st.session_state.source_text = st.text_area(
     placeholder=t("sec2_placeholder"),
 )
 if st.session_state.source_text.strip():
-    n_chunks = len(split_into_chunks(
-        st.session_state.source_text, max_chars=st.session_state.chunk_max_chars,
-    ))
+    _chunks = split_into_chunks(
+        st.session_state.source_text,
+        max_chars=st.session_state.chunk_max_chars,
+        max_segments=st.session_state.chunk_max_segments,
+    )
+    n_chunks = len(_chunks)
+    n_segments = sum(len(c.segments) for c in _chunks)
     if n_chunks > 1:
-        st.caption(t("sec2_chunks_doc", n=n_chunks))
+        st.caption(t("sec2_chunks_doc", n=n_chunks) + f" · {n_segments} segments")
     else:
-        st.caption(t("sec2_chunks_single", n=n_chunks))
+        st.caption(t("sec2_chunks_single", n=n_chunks) + f" · {n_segments} segments")
 
 # ---------------------------------------------------------------------------
 # Section 3: Spec proposal + refinement chat
@@ -444,6 +469,13 @@ if st.session_state.spec_md:
 
 st.subheader(t("sec4_header"))
 
+st.caption(
+    f"Scoring: **MQM 0–100** (higher is better) · "
+    f"Accept threshold: **{float(st.session_state.accept_threshold):.1f}** · "
+    f"Weights: critical=25, major=5, minor=1 per 100 source chars · "
+    f"Standard: {SCORING_CRITERIA['standard']}"
+)
+
 translate_clicked = st.button(
     t("sec4_button"),
     type="primary",
@@ -505,27 +537,39 @@ if translate_clicked:
         elif name == "verification":
             with _chunk_container(state["current_chunk"]):
                 verdict = payload.get("verdict", "?")
-                score = payload.get("score", 0)
+                score = payload.get("score", 0.0)              # MQM 0–100
+                penalty = payload.get("penalty", 0)
+                src_len = payload.get("source_length", 0)
+                threshold = payload.get("accept_threshold", 95.0)
+                band = payload.get("quality_band", "")
                 counts = payload.get("counts", {})
                 errors = payload.get("errors", [])
-                emoji = "✅" if verdict == "accept" else "🔁"
+                criteria = payload.get("scoring_criteria", {})
+
+                light = "🟢" if score >= 95 else ("🟡" if score >= 90 else "🔴")
+                verdict_word = "ACCEPT" if verdict == "accept" else "REVISE"
+
                 with st.expander(
-                    t("stage4_title",
-                      i=state["current_chunk"], iter=payload["iteration"],
-                      emoji=emoji, verdict=verdict, score=score,
-                      th=payload.get("accept_threshold", -2)),
+                    f"{light} verify (chunk {state['current_chunk']} · iter {payload['iteration']}) "
+                    f"— MQM {score:.1f}/100 · {verdict_word} (threshold {threshold:.1f})",
                     expanded=bool(errors),
                 ):
                     cols = st.columns(4)
-                    cols[0].metric(t("stage4_metric_score"), score)
-                    cols[1].metric(t("stage4_metric_critical"), counts.get("critical", 0))
-                    cols[2].metric(t("stage4_metric_major"), counts.get("major", 0))
-                    cols[3].metric(t("stage4_metric_minor"), counts.get("minor", 0))
+                    cols[0].metric("MQM score", f"{score:.1f}/100",
+                                   delta=f"{score - threshold:+.1f} vs threshold")
+                    cols[1].metric("Critical", counts.get("critical", 0))
+                    cols[2].metric("Major", counts.get("major", 0))
+                    cols[3].metric("Minor", counts.get("minor", 0))
+                    st.caption(
+                        f"Penalty: {penalty} pts over {src_len} source chars · "
+                        f"Quality band: **{band.replace('_',' ')}**"
+                    )
                     if errors:
                         rows = [
                             {
                                 "severity": e.get("severity", ""),
                                 "category": e.get("category", ""),
+                                "spec_section": e.get("spec_section", ""),
                                 "span": e.get("span", ""),
                                 "explanation": e.get("explanation", ""),
                             }
@@ -534,6 +578,25 @@ if translate_clicked:
                         st.dataframe(rows, use_container_width=True, hide_index=True)
                     if payload.get("summary"):
                         st.caption(payload["summary"])
+                    # Scoring criteria (transparency)
+                    if criteria:
+                        with st.expander("ⓘ Scoring criteria used", expanded=False):
+                            w = criteria.get("weights", {})
+                            bands = criteria.get("bands", {})
+                            refs = criteria.get("references", [])
+                            st.markdown(
+                                f"- **Standard**: {criteria.get('standard','')}\n"
+                                f"- **Normalization**: {criteria.get('normalize_unit','')}\n"
+                                f"- **Severity weights**: critical={w.get('critical')}, "
+                                f"major={w.get('major')}, minor={w.get('minor')}\n"
+                                f"- **Formula**: score = max(0, 100 − penalty × 100 ÷ source_chars)\n"
+                                f"- **Threshold (this run)**: {threshold:.1f}\n"
+                                f"- **Quality bands**: publication ≥ {bands.get('publication_quality','95')}, "
+                                f"business {bands.get('business_quality','90–94')}, "
+                                f"needs revision {bands.get('needs_major_revision','<85')}"
+                            )
+                            if refs:
+                                st.caption("References: " + "; ".join(refs))
         elif name == "chunk_done":
             with _chunk_container(payload["index"]):
                 if payload["accepted"]:
@@ -577,9 +640,12 @@ if translate_clicked:
             max_iterations=st.session_state.max_iterations,
             accept_threshold=st.session_state.accept_threshold,
             chunk_max_chars=st.session_state.chunk_max_chars,
+            chunk_max_segments=st.session_state.chunk_max_segments,
+            dual_verifier=st.session_state.dual_verifier,
             on_event=on_event,
         )
         st.session_state.translation_result = result
+        st.session_state.align_cache = {}  # reset on new run
     except Exception as e:
         _record_run_event("error", {"message": str(e)})
         status.update(label=f"Error: {e}", state="error")
@@ -602,9 +668,9 @@ if result is not None:
         label_visibility="collapsed",
     )
 
-    result_json = json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
-    dl_cols = st.columns(2)
-    with dl_cols[0]:
+    with st.expander("📥 Downloads", expanded=False):
+        # --- Translation only ---
+        st.markdown("**Translation**")
         st.download_button(
             t("fin_download_txt"),
             data=result.final_translation,
@@ -612,16 +678,114 @@ if result is not None:
             mime="text/plain",
             use_container_width=True,
         )
-    with dl_cols[1]:
-        st.download_button(
-            t("fin_download_json"),
-            data=result_json,
-            file_name="agentic_translation_run.json",
-            mime="application/json",
-            use_container_width=True,
-        )
 
-    _show_run_log_downloads()
+        st.markdown("---")
+
+        # --- Bilingual for human review ---
+        st.markdown("**Bilingual (for human review)**")
+        st.caption(
+            "Sentence-level uses regex when the translation's sentence count matches the source's; "
+            "otherwise an LLM aligner is invoked (cached after first use)."
+        )
+        bi_sent_rows = build_bilingual_rows(
+            result,
+            granularity="sentence",
+            target_language=st.session_state.target_language,
+            use_llm_for_misaligned=True,
+            align_cache=st.session_state.align_cache,
+        )
+        _q_counts = {}
+        for r in bi_sent_rows:
+            _q_counts[r["alignment_quality"]] = _q_counts.get(r["alignment_quality"], 0) + 1
+        st.caption(f"Sentence-level rows: {len(bi_sent_rows)} — " +
+                   ", ".join(f"{k}={v}" for k, v in _q_counts.items()))
+
+        bi_chunk_rows = build_bilingual_rows(result, granularity="chunk")
+
+        sent_cols = st.columns(2)
+        with sent_cols[0]:
+            st.download_button(
+                "Sentence-level (CSV)",
+                data=bilingual_to_csv(bi_sent_rows),
+                file_name="agentic_bilingual_sentence.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with sent_cols[1]:
+            st.download_button(
+                "Sentence-level (Excel)",
+                data=bilingual_to_excel(bi_sent_rows),
+                file_name="agentic_bilingual_sentence.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+        chunk_cols = st.columns(2)
+        with chunk_cols[0]:
+            st.download_button(
+                "Chunk-level (CSV)",
+                data=bilingual_to_csv(bi_chunk_rows),
+                file_name="agentic_bilingual_chunk.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with chunk_cols[1]:
+            st.download_button(
+                "Chunk-level (Excel)",
+                data=bilingual_to_excel(bi_chunk_rows),
+                file_name="agentic_bilingual_chunk.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+        st.markdown("---")
+
+        # --- Process trace ---
+        st.markdown("**Process trace (full pipeline log)**")
+        _run_meta = {
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source_language": st.session_state.source_language,
+            "target_language": st.session_state.target_language,
+            "provider": st.session_state.llm_provider,
+            "max_iterations": st.session_state.max_iterations,
+            "accept_threshold": st.session_state.accept_threshold,
+            "chunk_max_chars": st.session_state.chunk_max_chars,
+            "chunk_max_segments": st.session_state.chunk_max_segments,
+            "dual_verifier": st.session_state.dual_verifier,
+            "n_chunks": len(result.chunk_results),
+            "spec_text": st.session_state.spec_md,
+            "scoring_criteria": SCORING_CRITERIA,
+        }
+        _trace = build_trace_data(result, _run_meta)
+        result_json = json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+
+        trace_cols = st.columns(3)
+        with trace_cols[0]:
+            st.download_button(
+                "Trace (Markdown)",
+                data=to_markdown(_trace),
+                file_name="agentic_trace.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+        with trace_cols[1]:
+            st.download_button(
+                "Trace (Excel)",
+                data=to_excel(_trace),
+                file_name="agentic_trace.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        with trace_cols[2]:
+            st.download_button(
+                t("fin_download_json"),
+                data=result_json,
+                file_name="agentic_translation_run.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+
+        _show_run_log_downloads()
 
     if result.memory.proper_nouns:
         with st.expander(t("fin_terminology", n=len(result.memory.proper_nouns)),
