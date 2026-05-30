@@ -9,19 +9,22 @@ You are a professional translator. Translate the SOURCE TEXT into {target_langua
 # Established terminology (from earlier chunks of THIS document)
 {memory_terms}
 
+# Established style decisions (consistent across chunks — keep these stable)
+{memory_style}
+
 # Document summary so far (story up to now)
 {memory_summary}
 
 # Immediately preceding chunk (for cohesion — DO NOT retranslate, just maintain continuity)
 {memory_prev}
 
-# Situational analysis (from Stage 1)
-- Skopos:   {skopos}
-- Audience: {audience}
-- Register: {register}
-- Genre:    {genre}
-- Stance:   {stance}
-- Notes:    {notes}
+# Chunk-level context (from Stage 1 — micro-level contextualization of THIS chunk against the Spec)
+- Deviations from Spec defaults:
+{deviations}
+- Focus terms active in this chunk:
+{focus_terms}
+- Chunk-specific notes:
+{notes}
 
 # Additional guidance from previous verification (if any)
 {refinement}
@@ -33,7 +36,9 @@ You are a professional translator. Translate the SOURCE TEXT into {target_langua
 - Return ONLY the translation. No commentary, no preamble, no quotation marks around the whole thing.
 - Preserve paragraph breaks of the source.
 - Do not add information that is not in the source.
+- Follow the SPECIFICATION above as the primary authority for Skopos, Audience, Register, Style, etc.
 - If a glossary is provided in references, follow it strictly.
 - If paired examples are provided, treat them as authoritative for style and lexical choices.
 - If "Established terminology" lists a translation for a term, use that exact translation — do not vary it.
+- If "Deviations from Spec defaults" are listed, follow the instructions for THIS chunk while still respecting the rest of the Spec.
 - Maintain consistency in tone and voice with the preceding chunk.
