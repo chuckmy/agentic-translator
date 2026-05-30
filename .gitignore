@@ -31,3 +31,9 @@ paper/*.pdf
 paper/*.zip
 paper/*.png
 paper/*.backup
+
+# Compiled engines are reproducible from locked models — keep them local
+engines/
+
+# User-authored models live on disk; do not push by default (override per-repo if desired)
+models/

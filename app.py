@@ -14,6 +14,9 @@ import streamlit as st
 import api
 from chunker import split_into_chunks
 from i18n import LANGS, t as _t
+from model import (
+    Engine, TranslationModel, engines_dir, list_engines, list_models, models_dir,
+)
 from pipeline import SCORING_CRITERIA, run_document_pipeline
 from references import References, parse_pair_table
 from spec_chat import propose_spec, refine_spec
@@ -64,6 +67,10 @@ def _init_state():
     ss.setdefault("translation_result", None)
     ss.setdefault("run_events", [])
     ss.setdefault("align_cache", {})
+    # Model / Engine state (v0.10.0)
+    ss.setdefault("at_mode", "session")          # session | model_dev | engine
+    ss.setdefault("active_model_id", "")          # current model in dev mode
+    ss.setdefault("active_engine_ref", "")        # "<id>@<version>" in engine mode
 
 
 _init_state()
@@ -83,6 +90,24 @@ _UI_LANG_TO_SPEC = {"en": "English", "ja": "Japanese"}
 
 def _spec_language() -> str:
     return _UI_LANG_TO_SPEC.get(st.session_state.ui_lang, "English")
+
+
+def _active_engine() -> Engine | None:
+    if st.session_state.at_mode == "engine" and st.session_state.active_engine_ref:
+        try:
+            return Engine.load(st.session_state.active_engine_ref)
+        except Exception:
+            return None
+    return None
+
+
+def _active_model() -> TranslationModel | None:
+    if st.session_state.at_mode == "model_dev" and st.session_state.active_model_id:
+        try:
+            return TranslationModel.load(st.session_state.active_model_id)
+        except Exception:
+            return None
+    return None
 
 
 def _jsonable(value):
@@ -233,6 +258,104 @@ with st.sidebar:
 
     st.divider()
 
+    # Model / Engine
+    st.header("Model / Engine")
+    mode = st.radio(
+        "Mode",
+        options=["session", "model_dev", "engine"],
+        index=["session", "model_dev", "engine"].index(st.session_state.at_mode),
+        format_func=lambda m: {
+            "session": "Session only (legacy)",
+            "model_dev": "Model dev (author a Model)",
+            "engine": "Engine (use a compiled Engine)",
+        }[m],
+        help=(
+            "Session only: legacy behaviour, no persistence. "
+            "Model dev: author a versioned Model with spec/refs/decisions on disk. "
+            "Engine: run a frozen Engine snapshot (production use)."
+        ),
+    )
+    if mode != st.session_state.at_mode:
+        st.session_state.at_mode = mode
+        st.rerun()
+
+    if mode == "engine":
+        engines = list_engines()
+        if not engines:
+            st.info(
+                f"No engines yet at {engines_dir()}. "
+                "Compile one from a locked Model first."
+            )
+            st.session_state.active_engine_ref = ""
+        else:
+            refs = [e.display_id for e in engines]
+            cur = st.session_state.active_engine_ref
+            idx = refs.index(cur) if cur in refs else 0
+            chosen = st.selectbox("Engine", refs, index=idx)
+            if chosen != st.session_state.active_engine_ref:
+                st.session_state.active_engine_ref = chosen
+                st.rerun()
+            e = next(eng for eng in engines if eng.display_id == chosen)
+            ok, drifted = e.verify()
+            ll = e.llm_settings()
+            pl = e.pipeline_kwargs()
+            st.caption(
+                f"compiled: {e.seal.get('compiled_at','')}  ·  "
+                f"system v{e.seal.get('system_version','')}  ·  "
+                f"{'✅ verified' if ok else f'⚠️ drift ({len(drifted)})'}\n\n"
+                f"LLM: {ll.get('provider')} / {ll.get('model')}  ·  "
+                f"threshold: {pl.get('mqm_threshold')}"
+            )
+
+    elif mode == "model_dev":
+        models = list_models()
+        labels = ["(create new)"] + [f"{m.id} ({m.version}, {'locked' if m.is_locked else 'draft'})" for m in models]
+        cur_id = st.session_state.active_model_id
+        idx = 0
+        if cur_id:
+            for i, m in enumerate(models):
+                if m.id == cur_id:
+                    idx = i + 1
+                    break
+        chosen_label = st.selectbox("Model", labels, index=idx)
+        if chosen_label == "(create new)":
+            with st.form("new_model_form"):
+                new_id = st.text_input("New model id (kebab-case)", placeholder="corporate-tech-ja-en")
+                new_display = st.text_input("Display name", placeholder="Corporate Tech JA→EN")
+                new_desc = st.text_area("Description", placeholder="One-line description", height=70)
+                new_locale = st.text_input("Target locale (optional)", placeholder="en-US")
+                created = st.form_submit_button("Create", type="primary")
+                if created and new_id.strip():
+                    try:
+                        m = TranslationModel.new(
+                            id=new_id.strip(),
+                            display_name=new_display.strip() or new_id.strip(),
+                            description=new_desc.strip(),
+                            source_language=st.session_state.source_language,
+                            target_language=st.session_state.target_language,
+                            locale=new_locale.strip(),
+                            created_by="",
+                        )
+                        st.session_state.active_model_id = m.id
+                        st.success(f"Created model {m.id} at {m.model_dir}")
+                        st.rerun()
+                    except FileExistsError as exc:
+                        st.error(str(exc))
+        else:
+            sel = models[labels.index(chosen_label) - 1]
+            if sel.id != st.session_state.active_model_id:
+                st.session_state.active_model_id = sel.id
+                st.rerun()
+            drift, files = sel.has_drift()
+            drift_note = f"  ·  ⚠️ drift ({len(files)})" if drift else ""
+            st.caption(
+                f"path: `{sel.model_dir.relative_to(models_dir().parent) if models_dir() in sel.model_dir.parents or sel.model_dir.parent == models_dir() else sel.model_dir}`\n\n"
+                f"version: **{sel.version}**  ·  "
+                f"state: **{'locked' if sel.is_locked else 'draft'}**{drift_note}"
+            )
+
+    st.divider()
+
     # Languages
     st.header(t("sb_languages"))
     st.session_state.source_language = st.selectbox(
@@ -280,10 +403,22 @@ with st.sidebar:
 # Section 1: References upload
 # ---------------------------------------------------------------------------
 
-with st.expander(
+_engine_active = _active_engine()
+_model_active = _active_model()
+
+if _engine_active is not None:
+    st.info(
+        f"**Engine mode** — using **{_engine_active.display_id}** "
+        f"(compiled {_engine_active.seal.get('compiled_at','')}). "
+        f"Spec and references come from the engine; sections 1 and 3 are hidden."
+    )
+
+# Section 1 is hidden in engine mode (engine bundles refs).
+if _engine_active is None:
+  with st.expander(
     t("sec1_header", summary=st.session_state.references.summary()),
     expanded=st.session_state.references.is_empty(),
-):
+  ):
     refs: References = st.session_state.references
     cols = st.columns(2)
 
@@ -370,30 +505,45 @@ if st.session_state.source_text.strip():
 # Section 3: Spec proposal + refinement chat
 # ---------------------------------------------------------------------------
 
-st.subheader(t("sec3_header"))
+if _engine_active is not None:
+    # Engine mode: spec is baked in. Show a compact summary instead of authoring UI.
+    with st.expander(f"Spec (from engine {_engine_active.display_id}, read-only)", expanded=False):
+        st.code(_engine_active.spec_narrative, language="markdown")
 
-c1, c2, c3 = st.columns([1, 1, 1])
-with c1:
+# Section 3 is shown in session and model_dev modes.
+if _engine_active is None:
+  st.subheader(t("sec3_header"))
+
+  # Model dev: load spec from model on first activation (only if session spec is empty).
+  if _model_active is not None and not st.session_state.spec_md:
+      model_spec = _model_active.spec_narrative
+      if model_spec.strip():
+          st.session_state.spec_md = model_spec
+          st.session_state.spec_locked = _model_active.is_locked
+          st.session_state.spec_rev += 1
+
+  c1, c2, c3 = st.columns([1, 1, 1])
+  with c1:
     propose_clicked = st.button(
         t("sec3_propose"),
         type="primary" if not st.session_state.spec_md else "secondary",
         disabled=not st.session_state.source_text.strip() or not api.has_api_key(),
         use_container_width=True,
     )
-with c2:
+  with c2:
     lock_clicked = st.button(
         t("sec3_lock"),
         disabled=not st.session_state.spec_md or st.session_state.spec_locked,
         use_container_width=True,
     )
-with c3:
+  with c3:
     unlock_clicked = st.button(
         t("sec3_unlock"),
         disabled=not st.session_state.spec_locked,
         use_container_width=True,
     )
 
-if propose_clicked:
+  if propose_clicked:
     with st.spinner(t("sec3_proposing")):
         try:
             spec_md, _ = propose_spec(
@@ -410,14 +560,14 @@ if propose_clicked:
         except Exception as e:
             st.error(t("sec3_propose_failed", err=str(e)))
 
-if lock_clicked:
+  if lock_clicked:
     st.session_state.spec_locked = True
     st.success(t("sec3_locked_msg"))
 
-if unlock_clicked:
+  if unlock_clicked:
     st.session_state.spec_locked = False
 
-if st.session_state.spec_md:
+  if st.session_state.spec_md:
     # Use a versioned key so external updates (Propose / chat refine) force the
     # widget to rebuild and pick up the new value. Direct edits keep the same
     # version and are tracked via the return value.
@@ -463,6 +613,91 @@ if st.session_state.spec_md:
                     )
             st.rerun()
 
+  # ---- Model dev: Save / Lock & Compile -----------------------------------
+  if _model_active is not None:
+    st.markdown("---")
+    st.markdown(f"**Model dev controls — `{_model_active.id}` ({_model_active.version}, "
+                f"{'locked' if _model_active.is_locked else 'draft'})**")
+
+    mc1, mc2, mc3 = st.columns([1, 1, 1])
+
+    with mc1:
+        save_clicked = st.button(
+            "💾 Save Spec → Model",
+            disabled=_model_active.is_locked or not st.session_state.spec_md.strip(),
+            help="Write the current spec narrative to models/<id>/spec/narrative.md",
+            use_container_width=True,
+        )
+        if save_clicked:
+            try:
+                _model_active.write_spec(st.session_state.spec_md)
+                st.success(f"Saved spec to {_model_active.spec_narrative_path}")
+            except Exception as exc:
+                st.error(str(exc))
+
+    with mc2:
+        if _model_active.is_locked:
+            unlock_model_clicked = st.button(
+                "🔓 Unlock Model",
+                help="Return the Model to draft state. Existing Engines are unaffected.",
+                use_container_width=True,
+            )
+            if unlock_model_clicked:
+                _model_active.unlock()
+                st.success(f"Unlocked {_model_active.id}.")
+                st.rerun()
+        else:
+            bump = st.selectbox(
+                "Bump",
+                ["patch", "minor", "major"],
+                index=1,
+                key="model_bump_select",
+                help="Version bump for the lock.",
+            )
+
+    with mc3:
+        if _model_active.is_locked:
+            drift, files = _model_active.has_drift()
+            if drift:
+                st.warning(f"⚠️ Drift in {len(files)} file(s) since lock. Unlock + re-lock.")
+            existing_engine_dir = engines_dir() / f"{_model_active.id}@{_model_active.version}"
+            if existing_engine_dir.exists():
+                st.info(f"Engine `{_model_active.id}@{_model_active.version}` already compiled.")
+            else:
+                compile_clicked = st.button(
+                    "📦 Compile Engine",
+                    type="primary",
+                    use_container_width=True,
+                )
+                if compile_clicked:
+                    try:
+                        e = Engine.compile_from(_model_active)
+                        st.success(f"Compiled engine {e.display_id} at {e.engine_dir}")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+        else:
+            lock_compile_clicked = st.button(
+                "🔒 Lock & Compile",
+                type="primary",
+                disabled=not st.session_state.spec_md.strip(),
+                help="Lock the model with a version bump, then compile to an Engine.",
+                use_container_width=True,
+            )
+            if lock_compile_clicked:
+                try:
+                    # Persist current spec_md to model first (in case user forgot Save)
+                    _model_active.write_spec(st.session_state.spec_md)
+                    _model_active.lock(bump=st.session_state.get("model_bump_select", "minor"))
+                    e = Engine.compile_from(_model_active)
+                    st.success(
+                        f"Locked {_model_active.id} at {_model_active.version} and "
+                        f"compiled engine {e.display_id}"
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
 # ---------------------------------------------------------------------------
 # Section 4: Translate
 # ---------------------------------------------------------------------------
@@ -476,18 +711,23 @@ st.caption(
     f"Standard: {SCORING_CRITERIA['standard']}"
 )
 
+# In engine mode, the spec comes from the engine — no need to lock a session spec.
+_ready_for_translate = (
+    bool(st.session_state.source_text.strip()) and api.has_api_key()
+    and (_engine_active is not None or st.session_state.spec_locked)
+)
+
 translate_clicked = st.button(
     t("sec4_button"),
     type="primary",
-    disabled=not (
-        st.session_state.spec_locked
-        and st.session_state.source_text.strip()
-        and api.has_api_key()
-    ),
+    disabled=not _ready_for_translate,
 )
 
-if not st.session_state.spec_locked:
+if _engine_active is None and not st.session_state.spec_locked:
     st.caption(t("sec4_lock_first"))
+elif _engine_active is not None:
+    st.caption(f"Using engine **{_engine_active.display_id}** — spec, references, "
+               f"and pipeline knobs come from the engine.")
 
 if translate_clicked:
     st.session_state.run_events = []
@@ -635,8 +875,9 @@ if translate_clicked:
             source_text=st.session_state.source_text,
             source_language=st.session_state.source_language,
             target_language=st.session_state.target_language,
-            spec_text=st.session_state.spec_md,
-            references=st.session_state.references,
+            engine=_engine_active,
+            spec_text=None if _engine_active is not None else st.session_state.spec_md,
+            references=None if _engine_active is not None else st.session_state.references,
             max_iterations=st.session_state.max_iterations,
             accept_threshold=st.session_state.accept_threshold,
             chunk_max_chars=st.session_state.chunk_max_chars,

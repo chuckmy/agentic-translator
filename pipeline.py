@@ -27,8 +27,21 @@ from memory import DocumentMemory, update_memory
 from references import References
 
 ROOT = Path(__file__).parent
-PROMPTS = ROOT / "prompts"
+PROMPTS = ROOT / "prompts"   # may be reassigned per-call when an Engine is in use
 SPECS = ROOT / "specs"
+
+
+def _set_prompts_dir(path: Path) -> None:
+    """Swap the prompts directory used by this module AND memory.py.
+
+    Used during engine-backed runs to honour the engine's bundled prompt
+    snapshot rather than the system's live prompts. Always paired with a
+    restore in a try/finally.
+    """
+    global PROMPTS
+    PROMPTS = path
+    import memory as _memory  # local import to avoid cycle at module load
+    _memory.PROMPTS = path
 
 
 # --- helpers ---------------------------------------------------------------
@@ -572,6 +585,7 @@ def run_document_pipeline(
     source_text: str,
     source_language: str = "Japanese",
     target_language: str = "English",
+    engine: object | None = None,           # model.Engine | None — runtime import to avoid cycle
     spec_text: str | None = None,
     spec_path: Path | None = None,
     references: References | None = None,
@@ -584,13 +598,64 @@ def run_document_pipeline(
 ) -> DocumentResult:
     """Translate a (potentially long) document chunk-by-chunk with running memory.
 
+    If `engine` is given (a `model.Engine`), it overrides spec_text, references,
+    and pipeline knobs, and the engine's bundled prompts/ snapshot is used. The
+    global PROMPTS module variable is swapped during the run and restored on exit.
+
     For single-chunk inputs this behaves like run_pipeline() with no memory.
     """
-    if spec_text is None:
-        spec_path = spec_path or (SPECS / "default.md")
-        spec_text = _read(spec_path)
-    if references is None:
-        references = References()
+    saved_prompts = PROMPTS
+    try:
+        if engine is not None:
+            _set_prompts_dir(engine.prompts_dir)
+            spec_text = engine.spec_narrative
+            references = engine.references()
+            pl = engine.pipeline_kwargs()
+            max_iterations = pl.get("max_iterations", max_iterations)
+            accept_threshold = pl.get("mqm_threshold", accept_threshold)
+            chunk_max_chars = pl.get("chunk_max_chars", chunk_max_chars)
+            chunk_max_segments = pl.get("chunk_max_segments", chunk_max_segments)
+            dual_verifier = pl.get("dual_verifier", dual_verifier)
+
+        if spec_text is None:
+            spec_path = spec_path or (SPECS / "default.md")
+            spec_text = _read(spec_path)
+        if references is None:
+            references = References()
+
+        return _run_document_pipeline_inner(
+            source_text=source_text,
+            source_language=source_language,
+            target_language=target_language,
+            spec_text=spec_text,
+            references=references,
+            max_iterations=max_iterations,
+            accept_threshold=accept_threshold,
+            chunk_max_chars=chunk_max_chars,
+            chunk_max_segments=chunk_max_segments,
+            dual_verifier=dual_verifier,
+            on_event=on_event,
+            engine=engine,
+        )
+    finally:
+        _set_prompts_dir(saved_prompts)
+
+
+def _run_document_pipeline_inner(
+    *,
+    source_text: str,
+    source_language: str,
+    target_language: str,
+    spec_text: str,
+    references: References,
+    max_iterations: int,
+    accept_threshold: float,
+    chunk_max_chars: int,
+    chunk_max_segments: int,
+    dual_verifier: bool,
+    on_event: Callable[[str, object], None] | None,
+    engine: object | None,
+) -> DocumentResult:
 
     chunks = split_into_chunks(
         source_text, max_chars=chunk_max_chars, max_segments=chunk_max_segments
@@ -685,6 +750,8 @@ def _cli():
     p.add_argument("--source-language", default="Japanese")
     p.add_argument("--target", default="English", help="Target language")
     p.add_argument("--spec", default=None, help="Path to spec markdown")
+    p.add_argument("--engine", default=None,
+                   help="Engine ref <id>@<version> (overrides --spec and pipeline knobs)")
     p.add_argument("--max-iterations", type=int, default=3)
     p.add_argument("--dual-verifier", action="store_true",
                    help="Run a second Spec-grounded verifier and merge results.")
@@ -706,10 +773,16 @@ def _cli():
         else:
             print(payload)
 
+    engine = None
+    if args.engine:
+        from model import Engine  # local import to avoid module-load cycle
+        engine = Engine.load(args.engine)
+
     result = run_document_pipeline(
         source_text=source_text,
         source_language=args.source_language,
         target_language=args.target,
+        engine=engine,
         spec_path=spec_path,
         max_iterations=args.max_iterations,
         dual_verifier=args.dual_verifier,

@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.10.0 - 2026-05-30
+
+### Added
+
+- **TranslationModel**: a persistent, versioned bundle on disk (`models/<id>/`) with `manifest.yaml`, structured/narrative spec, glossary, TM, paired examples, style guide, accumulated style decisions, and a CHANGELOG. Models have semver versions and `draft` / `locked` states.
+- **Engine**: a frozen, immutable compile snapshot (`engines/<id>@<version>/`) that bundles everything needed to reproduce a model's behaviour, **including the prompt files** active at compile time. Engines carry a `seal.json` with content hashes, system version, and compile provenance. Files are made read-only on best-effort basis.
+- **Lock / Compile workflow**: `at model lock --bump patch|minor|major` freezes content hashes and bumps the semver. `at model compile` produces an Engine snapshot. Drift detection on locked models.
+- **CLI** (`cli.py`, run via `python -m cli ...` or the `at` alias): `model new / list / show / edit / lock / unlock / compile`, `engine list / show / verify / remove`.
+- **Streamlit Mode switcher**: three modes — `session only` (legacy), `model dev` (author a model), `engine` (use a compiled engine). Engine mode hides Sections 1 and 3 since refs and spec come from the engine.
+- **Lock & Compile button** in Model dev mode: writes the current Spec to the model, locks it with a chosen bump, and compiles an Engine in one click.
+- `run_document_pipeline(engine=...)`: when an Engine is supplied, its spec, references, prompts, and pipeline knobs are used; the system's live prompts are swapped out for the engine's bundled prompts during the run.
+- `pipeline.py --engine <id>@<version>` flag for CLI translation against a frozen Engine.
+- Environment variables `AT_MODELS_DIR` and `AT_ENGINES_DIR` to relocate Model/Engine storage (forward path to Azure Blob / shared mounts).
+- New dependencies: `pyyaml>=6.0`, `typer>=0.12`, `rich>=13.0`.
+
+### Changed
+
+- Pipeline's `PROMPTS` module-level path is now swappable; engine runs use the engine's bundled prompts and restore the system path on exit.
+
+### Notes
+
+- Models and engines are gitignored by default — they are user-authored / reproducible artefacts, not system code.
+- v0.11+ will activate Glossary/TM at scale (BM25 + per-chunk filtering, TMX import); v0.10 stores them on disk but does not yet retrieve.
+
 ## v0.9.0 - 2026-05-30
 
 ### Added
