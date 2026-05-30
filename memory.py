@@ -21,6 +21,7 @@ PROMPTS = ROOT / "prompts"
 @dataclass
 class DocumentMemory:
     proper_nouns: dict[str, str] = field(default_factory=dict)
+    style_decisions: dict[str, str] = field(default_factory=dict)
     summary: str = ""
     prev_source: str = ""
     prev_translation: str = ""
@@ -35,6 +36,14 @@ class DocumentMemory:
         lines = ["| Source | Target |", "|---|---|"]
         for s, t in self.proper_nouns.items():
             lines.append(f"| {s} | {t} |")
+        return "\n".join(lines)
+
+    def to_style_block(self) -> str:
+        if not self.style_decisions:
+            return "(no style decisions recorded yet)"
+        lines = ["| Dimension | Decision |", "|---|---|"]
+        for k, v in self.style_decisions.items():
+            lines.append(f"| {k} | {v} |")
         return "\n".join(lines)
 
     def to_prev_chunk_block(self, target_language: str) -> str:
@@ -81,6 +90,7 @@ def update_memory(
         f"TARGET LANGUAGE: {target_language}\n\n"
         f"CURRENT MEMORY:\n"
         f"- Proper-noun ledger:\n{memory.to_terms_block()}\n"
+        f"- Style decisions:\n{memory.to_style_block()}\n"
         f"- Running summary:\n{memory.summary or '(empty — this is the first chunk)'}\n\n"
         f"CHUNK JUST TRANSLATED:\n"
         f"SOURCE:\n{chunk_source}\n\n"
@@ -98,6 +108,9 @@ def update_memory(
     new_terms = delta.get("new_terms", {}) or {}
     for k, v in new_terms.items():
         memory.proper_nouns[str(k)] = str(v)
+    new_style = delta.get("new_style_decisions", {}) or {}
+    for k, v in new_style.items():
+        memory.style_decisions[str(k)] = str(v)
     if delta.get("updated_summary"):
         memory.summary = delta["updated_summary"]
     memory.prev_source = chunk_source

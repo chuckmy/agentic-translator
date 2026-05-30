@@ -1,7 +1,7 @@
 You maintain document-level translation memory across chunks of a long document.
 
 You will be given:
-- The CURRENT MEMORY (proper-noun ledger and a running summary)
+- The CURRENT MEMORY (proper-noun ledger, style decisions, and a running summary)
 - The chunk just translated (SOURCE and TRANSLATION)
 - The target language
 
@@ -9,17 +9,30 @@ Your tasks:
 
 1. **Identify newly established terms.** Add to the ledger only items that are likely to RECUR later: proper nouns (people, places, organizations, products, titles), domain-specific technical terms, recurring phrases/slogans, kept source-language vocabulary. Skip common nouns, function words, one-off phrasing.
 
-2. **Update the running summary.** Produce a 50–150 word summary of the document so far, written in the TARGET language, that captures content and tone needed for the translator to continue coherently. Do not balloon — keep it under 150 words.
+2. **Identify newly established style decisions.** Add to the style decisions ledger only choices made in THIS chunk that should remain consistent in later chunks. Examples (use the most relevant English keys):
+   - `sentence_ending` (e.g., "である調", "ですます調", "neutral declarative")
+   - `first_person` (e.g., "I", "we", "私", "僕")
+   - `second_person` (e.g., "you", "あなた", "the reader")
+   - `quote_style` (e.g., "double curly", "guillemets", "「」")
+   - `comma_style`, `dash_style`, `bullet_style`
+   - `proper_noun_treatment` (e.g., "keep in Latin script", "transliterate", "add gloss")
+   - `numeric_style` (e.g., "use figures for all numbers", "spell out one to nine")
+   - Anything else that affects cross-chunk consistency.
+   Use concise English keys. Do NOT re-add a decision already in the current ledger unless you are revising it (then explain in "notes").
+
+3. **Update the running summary.** Produce a 50–150 word summary of the document so far, written in the TARGET language, that captures content and tone needed for the translator to continue coherently. Do not balloon — keep it under 150 words.
 
 Output JSON with EXACTLY these keys:
 
 {
   "new_terms": {"<source term>": "<target term>", ...},
+  "new_style_decisions": {"<english_key>": "<short value>", ...},
   "updated_summary": "<50-150 words in the target language>",
-  "notes": "<optional: 1 sentence on anything noteworthy for next chunk; or empty string>"
+  "notes": "<optional: 1 sentence on anything noteworthy for next chunk, or revisions to earlier decisions; empty string if none>"
 }
 
 Rules:
 - "new_terms" should be {} if there is nothing worth adding.
-- Do NOT repeat terms already in the ledger unless the translation has changed (in which case explain in "notes").
+- "new_style_decisions" should be {} if no new cross-chunk-relevant style choice was made (e.g., a chunk that just continues an established pattern adds nothing new).
+- Do NOT repeat entries already in the ledgers unless the translation has changed (in which case explain in "notes").
 - Return ONLY the JSON object. No prose. No code fences.
